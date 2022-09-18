@@ -1,0 +1,62 @@
+{
+    "builders": [
+        {
+            "type": "qemu",
+            "qemuargs": [
+                [
+                    "-m",
+                    "2048M"
+                ]
+            ],
+            "output_directory": "./packer_output/qemu",
+            "disk_size": "2500M",
+            "format": "raw",
+            "accelerator": "kvm",
+            "iso_url": "https://mirror.puzzle.ch/archlinux/iso/2022.01.01/archlinux-2022.01.01-x86_64.iso",
+            "iso_checksum": "sha1:efc9c33087e756ba1c7f326e67bfaa685eb51be3",
+            "headless": false,
+            "disk_cache": "unsafe",
+            "disk_discard": "unmap",
+            "disk_compression": true,
+            "http_directory": "http",
+            "boot_wait": "5s",
+            "boot_command": [
+                "<enter><wait10><wait10><wait10><wait10><enter>",
+                "curl -sfSLO http://{{ .HTTPIP }}:{{ .HTTPPort }}/packer.sh<enter><wait>",
+                "chmod +x *.sh<enter>",
+                "./packer.sh<enter>"
+            ],
+            "ssh_username": "root",
+            "ssh_password": "root",
+            "ssh_timeout": "20m",
+            "shutdown_command": "sudo systemctl poweroff"
+        }
+    ],
+    "provisioners": [
+        {
+            "type": "shell",
+            "inline": [
+                "sudo pacman -Sy --noconfirm --needed ansible"
+            ]
+        },
+        {
+            "type": "ansible-local",
+            "extra_arguments": [
+                "-v",
+                "--extra-vars", "\"username=\\\"{{ user `username` }}\\\" user_ssh_public_key=\\\"{{ user `user_ssh_public_key`}}\\\"\""
+            ],
+            "playbook_file": "playbooks/create-packer-qemu-img.yml",
+            "role_paths": [
+                "roles/archlinux-install"
+            ]
+        }
+    ],
+    "post-processors": [
+        {
+            "type": "shell-local",
+            "inline": [
+                "set -e; qemu-img convert -f raw -O vpc -o subformat=fixed,force_size ./packer_output/qemu/packer-qemu ./packer_output/archlinux.vhd"
+            ]
+        }
+    ]
+}
