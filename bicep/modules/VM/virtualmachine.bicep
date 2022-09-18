@@ -34,7 +34,7 @@ resource vm 'Microsoft.Compute/virtualMachines@2021-07-01' = {
       }
     }
     hardwareProfile: {
-      vmSize: 'Standard_A4_v2'
+      vmSize: 'Standard_D4_v3'
     }
     storageProfile: {
       osDisk: {

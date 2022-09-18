@@ -12,9 +12,9 @@
             "disk_size": "2500M",
             "format": "raw",
             "accelerator": "kvm",
-            "iso_url": "https://mirror.puzzle.ch/archlinux/iso/2022.01.01/archlinux-2022.01.01-x86_64.iso",
-            "iso_checksum": "sha1:efc9c33087e756ba1c7f326e67bfaa685eb51be3",
-            "headless": false,
+            "iso_url": "https://mirror.puzzle.ch/archlinux/iso/latest/archlinux-x86_64.iso",
+            "iso_checksum": "sha1:778b6399dff5955ef0666d4962da2a9c291b59cb",
+            "headless": true,
             "disk_cache": "unsafe",
             "disk_discard": "unmap",
             "disk_compression": true,
@@ -45,7 +45,7 @@
                 "-v",
                 "--extra-vars", "\"username=\\\"{{ user `username` }}\\\" user_ssh_public_key=\\\"{{ user `user_ssh_public_key`}}\\\"\""
             ],
-            "playbook_file": "playbooks/create-packer-qemu-img.yml",
+            "playbook_file": "playbooks/archlinux-install-playbook.yml",
             "role_paths": [
                 "roles/archlinux-install"
             ]
