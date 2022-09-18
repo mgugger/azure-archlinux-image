@@ -1,0 +1,15 @@
+baseline='mdgcorpimagebuilder'
+location='switzerlandnorth'
+pubkeydata=$(cat ~/.ssh/id_rsa.pub)
+vm_admin_name=$(whoami)
+local_public_ip=$(curl ifconfig.me)
+
+# Create / Update the deployment (replace AAD Group ID)
+az deployment group create -n "$baseline-main" -g "image-builder" -f "bicep/main.bicep" \
+    --parameters baseName=$baseline \
+    --parameters pubkeydata="$pubkeydata" \
+    --parameters vm_admin_name="$vm_admin_name" \
+    --parameters local_public_ip="$local_public_ip"
+
+# Cleanup. Delete the RG and Deployment
+# az deployment group delete -n "$baseline" -g "image-builder"
