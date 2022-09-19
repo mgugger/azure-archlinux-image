@@ -114,6 +114,10 @@
       state: mounted
       fstype: vfat
 
+  - name: Pause for 5 minutes for pacman-init.service to finish
+    ansible.builtin.pause:
+      minutes: 5
+
   - name: Run pacstrap base system
     command: pacstrap /mnt base linux linux-firmware
 
