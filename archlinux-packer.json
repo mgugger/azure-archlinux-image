@@ -34,12 +34,6 @@
     ],
     "provisioners": [
         {
-            "type": "shell",
-            "inline": [
-                "sudo pacman -Sy --noconfirm --needed ansible"
-            ]
-        },
-        {
             "type": "ansible",
             "user": "root",
             "playbook_file": "playbooks/archlinux-install-playbook.yml"

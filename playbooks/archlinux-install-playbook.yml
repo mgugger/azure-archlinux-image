@@ -3,6 +3,10 @@
 - name: 'Provision Arch Linux'
   hosts: default
   become: true
+  vars:
+    install_device_name: /dev/sda
+    bootloader: bios
+    username: admin
   tasks:
   - name: Check device name {{ install_device_name }} exists
     stat: "path={{ install_device_name }}"
@@ -111,7 +115,7 @@
       fstype: vfat
 
   - name: Run pacstrap base system
-    command: pacstrap /mnt base linux linux-firmware
+    command: pacstrap /mnt base linux-hardened linux-firmware
 
   - name: Remove fstab
     ansible.builtin.file:
