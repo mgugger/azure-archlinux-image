@@ -13,9 +13,15 @@ runcmd:
   - sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"
   - sudo apt update
   - sudo apt install -y packer
-  - #Install Ansible
+  - # Install Ansible
   - sudo apt update
   - sudo apt install software-properties-common
   - sudo apt-add-repository --yes --update ppa:ansible/ansible
   - sudo apt install -y ansible
   - ansible-galaxy collection install community.general
+  - # Install AzCopy
+  - wget https://aka.ms/downloadazcopy-v10-linux
+  - tar -xvf downloadazcopy-v10-linux
+  - sudo rm /usr/bin/azcopy
+  - sudo cp ./azcopy_linux_amd64_*/azcopy /usr/bin/
+  - sudo chmod 777 /usr/bin/azcopy

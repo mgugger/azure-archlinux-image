@@ -6,6 +6,7 @@
   vars:
     install_device_name: /dev/vda
     bootloader: bios
+    cloud_init: true
   tasks:  
   - name: Check device name {{ install_device_name }} exists
     stat: "path={{ install_device_name }}"
@@ -229,6 +230,7 @@
           systemctl enable cloud-final.service
 
   - name: set cloud-init cloud.cfg
+    when: cloud_init
     copy:
       owner: root
       group: root

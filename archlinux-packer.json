@@ -1,7 +1,8 @@
 {
     "variables": {
         "username": null,
-        "publickey": null
+        "publickey": null,
+        "storage_account_name": null
     },
     "builders": [
         {
@@ -48,7 +49,9 @@
         {
             "type": "shell-local",
             "inline": [
-                "set -e; qemu-img convert -f raw -O vpc -o subformat=fixed,force_size ./packer_output/qemu/packer-qemu ./packer_output/archlinux.vhd"
+                "set -e; qemu-img convert -f raw -O vpc -o subformat=fixed,force_size ./packer_output/qemu/packer-qemu ./packer_output/archlinux.vhd",
+                "azcopy login --identity",
+                "azcopy copy ./packer_output/archlinux.vhd https://{{user `storage_account_name`}}.blob.core.windows.net/archlinux/"
             ]
         }
     ]

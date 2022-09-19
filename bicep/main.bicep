@@ -30,6 +30,11 @@ module vnet 'modules/vnet/vnet.bicep' = {
       {
         properties: {
           addressPrefix: '10.0.0.0/24'
+          serviceEndpoints: [
+            {
+              service: 'Microsoft.Storage'
+            }
+          ]
           networkSecurityGroup: {
             id: nsg.outputs.nsgId
           }
@@ -69,5 +74,17 @@ module vm 'modules/VM/virtualmachine.bicep' = {
     publicKey: pubkeydata
     publicIpId: publicip.outputs.publicipId
     vm_admin_name: vm_admin_name
+  }
+}
+
+// Storage Account
+module sta 'modules/storage/storage_account.bicep' = {
+  name: format('{0}sta', baseName)
+  params: {
+    name: baseName
+    kind: 'StorageV2'
+    location: location
+    subnetId: vnet.outputs.vnetSubnets[0].id
+    principalId: vm.outputs.principalId
   }
 }

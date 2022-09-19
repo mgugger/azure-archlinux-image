@@ -16,6 +16,9 @@ module nic '../vnet/nic.bicep' = {
 resource vm 'Microsoft.Compute/virtualMachines@2021-07-01' = {
   name: 'vm-imagebuilder'
   location: location
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     osProfile: {
       customData: loadFileAsBase64('./cloud-init.sh')
@@ -77,3 +80,5 @@ resource autoShutdownScheduler 'Microsoft.DevTestLab/schedules@2018-09-15' = {
     timeZoneId: 'W. Europe Standard Time'
   }
 }
+
+output principalId string = vm.identity.principalId
