@@ -4,17 +4,10 @@
   hosts: default
   become: true
   vars:
-    install_device_name: /dev/sda
+    install_device_name: /dev/vda
     bootloader: bios
     username: admin
-  tasks:
-  - name: Return motd to registered var
-    ansible.builtin.command: sudo lsblk
-    register: lsblk_output
-  
-  - debug:
-      msg: "{{ lsblk_output }}"
-  
+  tasks:  
   - name: Check device name {{ install_device_name }} exists
     stat: "path={{ install_device_name }}"
     register: device
@@ -122,7 +115,7 @@
       fstype: vfat
 
   - name: Run pacstrap base system
-    command: pacstrap /mnt base linux-hardened linux-firmware
+    command: pacstrap /mnt base linux linux-firmware
 
   - name: Remove fstab
     ansible.builtin.file:
