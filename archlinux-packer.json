@@ -1,4 +1,8 @@
 {
+    "variables": {
+        "username": null,
+        "publickey": null
+    },
     "builders": [
         {
             "type": "qemu",
@@ -36,7 +40,8 @@
         {
             "type": "ansible",
             "user": "root",
-            "playbook_file": "playbooks/archlinux-install-playbook.yml"
+            "playbook_file": "playbooks/archlinux-install-playbook.yml",
+            "extra_arguments": [ "--extra-vars", "username={{user `username`}} user_ssh_public_key={{user `publickey`}}" ]
         }
     ],
     "post-processors": [
