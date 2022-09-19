@@ -8,6 +8,13 @@
     bootloader: bios
     username: admin
   tasks:
+  - name: Return motd to registered var
+    ansible.builtin.command: sudo lsblk
+    register: lsblk_output
+  
+  - debug:
+      msg: "{{ lsblk_output }}"
+  
   - name: Check device name {{ install_device_name }} exists
     stat: "path={{ install_device_name }}"
     register: device
