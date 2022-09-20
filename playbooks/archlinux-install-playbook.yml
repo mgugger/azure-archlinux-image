@@ -336,8 +336,8 @@
     shell: "blkid | grep {{ install_device_name }}2 | awk -F : '{print \"blkid -s UUID -o value \"$1}' |sh"
     register: UUID_value
 
-  - name: set grub setting because incorrect settings due to arch-chroot 
-    when: bootloader != "bios"
+  - name: set grub settings because incorrect settings due to arch-chroot 
+    when: bootloader == "bios"
     copy:
       owner: root
       group: root
