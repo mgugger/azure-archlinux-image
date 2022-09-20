@@ -336,6 +336,18 @@
     shell: "blkid | grep {{ install_device_name }}2 | awk -F : '{print \"blkid -s UUID -o value \"$1}' |sh"
     register: UUID_value
 
+  - name: set grub setting because incorrect settings due to arch-chroot 
+    when: bootloader != "bios"
+    copy:
+      owner: root
+      group: root
+      force: yes
+      dest: /mnt/boot/grub/grub.cfg
+      content: |
+        linux /boot/vmlinuz-linux root=UUID={{ UUID_value['stdout'] }} rw
+        initrd /boot/initramfs-linux.img
+        boot
+
   - name: set refind setting because incorrect settings due to arch-chroot 
     when: bootloader != "bios"
     copy:
