@@ -337,6 +337,7 @@
     register: UUID_value
 
   - name: set refind setting because incorrect settings due to arch-chroot 
+    when: bootloader != "bios"
     copy:
       owner: root
       group: root

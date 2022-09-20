@@ -90,3 +90,4 @@ resource roleAssignment 'Microsoft.Authorization/roleAssignments@2020-04-01-prev
 }
 
 output id string = stg.id
+output name string = stg.name

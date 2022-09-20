@@ -1,9 +1,10 @@
 param subnetId string
 param publicIpId string
 param location string = resourceGroup().location
+param name string
 
 resource jbnic 'Microsoft.Network/networkInterfaces@2021-02-01' = {
-  name: 'vm-wireguard'
+  name: name
   location: location
   properties: {
     ipConfigurations: [

@@ -1,58 +1,52 @@
 param subnetId string
-param publicKey string
-param publicIpId string
-param vm_admin_name string
 param location string = resourceGroup().location
+param staId string
+param staName string
 
 module nic '../vnet/nic.bicep' = {
-  name: 'vm-wireguard-nic'
+  name: 'vm-from-vhd-nic'
   params: {
-    name: 'vm-wireguard'
+    name: 'vm-sample'
     location: location
     subnetId: subnetId
-    publicIpId: publicIpId
+    publicIpId: 'None'
+  }
+}
+
+resource vmDataDisk 'Microsoft.Compute/disks@2022-03-02' = {
+  name: 'vm-sample-vhd'
+  location: location
+  sku: {
+    name: 'Premium_LRS'
+  }
+  properties: {
+    osType: 'Linux'
+    diskSizeGB: 4
+    creationData: {
+      createOption: 'Import'
+      sourceUri: 'https://${staName}.blob.core.windows.net/archlinux/archlinux.vhd'
+      storageAccountId: staId
+    }
   }
 }
 
 resource vm 'Microsoft.Compute/virtualMachines@2021-07-01' = {
-  name: 'vm-imagebuilder'
+  name: 'vm-sample'
   location: location
   identity: {
     type: 'SystemAssigned'
   }
   properties: {
-    osProfile: {
-      customData: loadFileAsBase64('./cloud-init.sh')
-      computerName: 'vm-imagebuilder'
-      adminUsername: vm_admin_name
-      linuxConfiguration: {
-        ssh: {
-          publicKeys: [
-            {
-              path: format('/home/{0}/.ssh/authorized_keys', vm_admin_name)
-              keyData: publicKey
-            }
-          ]
-        }
-        disablePasswordAuthentication: true
-      }
-    }
     hardwareProfile: {
-      vmSize: 'Standard_D4_v3'
+      vmSize: 'Standard_B1s'
     }
     storageProfile: {
       osDisk: {
-        createOption: 'FromImage'
-        diskSizeGB: 64
+        createOption: 'Attach'
+        osType: 'Linux'
         managedDisk: {
-          storageAccountType: 'Standard_LRS'
+          id: vmDataDisk.id
         }
-      }
-      imageReference: {
-        publisher: 'Canonical'
-        offer: '0001-com-ubuntu-server-focal'
-        sku: '20_04-lts'
-        version: 'latest'
       }
     }
     networkProfile: {
