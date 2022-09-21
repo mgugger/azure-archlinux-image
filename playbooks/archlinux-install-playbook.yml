@@ -212,6 +212,9 @@
         - -c
         - |
           pacman -Sy --noconfirm grub
+          # Wrong UUIDs are generated in chroot
+          echo "GRUB_DISABLE_LINUX_UUID=true" >> /etc/default/grub
+          echo "GRUB_DISABLE_RECOVERY=true" >> /etc/default/grub
           grub-install {{ install_device_name }}
           grub-mkconfig -o /boot/grub/grub.cfg
 

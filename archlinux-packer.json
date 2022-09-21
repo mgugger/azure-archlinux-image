@@ -26,7 +26,7 @@
             "http_directory": "http",
             "boot_wait": "5s",
             "boot_command": [
-                "<enter><wait10><wait10><wait10><wait10><enter>",
+                "<enter><wait60><enter>",
                 "curl -sfSLO http://{{ .HTTPIP }}:{{ .HTTPPort }}/packer.sh<enter><wait>",
                 "chmod +x *.sh<enter>",
                 "./packer.sh<enter>"
