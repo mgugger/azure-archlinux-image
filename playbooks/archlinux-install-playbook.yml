@@ -208,7 +208,31 @@
           echo "GRUB_DISABLE_LINUX_UUID=true" >> /etc/default/grub
           echo "GRUB_DISABLE_RECOVERY=true" >> /etc/default/grub
           grub-install {{ install_device_name }}
-          grub-mkconfig -o /boot/grub/grub.cfg
+          #grub-mkconfig -o /boot/grub/grub.cfg
+
+  - name: create grub.cfg
+    copy:
+      owner: root
+      group: root
+      force: yes
+      dest: /mnt/boot/grub/grub.cfg
+      content: |
+        set timeout=0
+        set default=0
+
+        menuentry "Arch Linux" {
+            load_video
+            set gfxpayload=keep
+            insmod gzio
+            insmod part_msdos
+            insmod btrfs
+
+            set root=(hd0,1)
+            echo 'Loading Linux linux-hardened ...'
+            linux /boot/vmlinuz-linux-hardened rw  loglevel=3 quiet
+            echo 'Loading initial ramdisk ...'
+            initrd  /boot/initramfs-linux-hardened.img
+        }
 
   - name: Show blkid
     shell: 'blkid'
