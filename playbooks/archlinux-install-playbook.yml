@@ -114,9 +114,9 @@
       state: mounted
       fstype: vfat
 
-  - name: Pause for 2 minutes for pacman-init.service to finish
+  - name: Pause for 1 minute for pacman-init.service to finish
     ansible.builtin.pause:
-      minutes: 2
+      minutes: 1
 
   - name: Run pacstrap base system
     command: pacstrap /mnt base linux-hardened linux-firmware
@@ -212,11 +212,28 @@
         - -c
         - |
           pacman -Sy --noconfirm grub
-          # Wrong UUIDs are generated in chroot
-          echo "GRUB_DISABLE_LINUX_UUID=true" >> /etc/default/grub
-          echo "GRUB_DISABLE_RECOVERY=true" >> /etc/default/grub
           grub-install {{ install_device_name }}
           grub-mkconfig -o /boot/grub/grub.cfg
+
+  - name: Show blkid
+    shell: 'blkid'
+    register: command_output
+
+  - debug:
+      var: command_output.stdout_lines
+
+  - ansible.builtin.debug:
+      msg: "the value of fstab is {{lookup('ansible.builtin.file', '/mnt/etc/fstab') }}"
+
+  - ansible.builtin.debug:
+      msg: "the value of grub.cfg is {{lookup('ansible.builtin.file', '/mnt/boot/grub/grub.cfg') }}"
+
+  - name: Show blkid
+    shell: 'grub-mkconfig'
+    register: grub_output
+
+  - debug:
+      var: grub_output.stdout_lines
 
   - name: Install cloud-init
     ignore_errors: true
