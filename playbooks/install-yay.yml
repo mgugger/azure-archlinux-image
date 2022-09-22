@@ -18,6 +18,7 @@
       - -c
       - |
         git clone https://aur.archlinux.org/yay-bin.git
+        chmod 777 yay-bin
 
 - name: makepkg
   when: username is defined
@@ -41,7 +42,7 @@
       - |
         cd yay-bin && makepkg -si --noconfirm
 
-- name: Install yay
+- name: remove cloned yay folder 
   command: 
     argv:
       - /usr/bin/arch-chroot
