@@ -252,11 +252,6 @@
   - debug:
       var: command_output.stdout_lines
 
-  - name: Remove fstab
-    ansible.builtin.file:
-      path: /mnt/etc/fstab
-      state: absent
-
   - name: Slurp fstab file
     slurp:
       src: /mnt/etc/fstab
