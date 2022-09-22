@@ -127,7 +127,7 @@
       state: absent
 
   - name: Run genfstab
-    command: genfstab -U /mnt >> /mnt/etc/fstab
+    command: genfstab -U /mnt > /mnt/etc/fstab
 
   - name: Set hostname to archlinux
     copy: 
@@ -222,6 +222,13 @@
   - debug:
       var: command_output.stdout_lines
 
+  - name: Show genfstab output
+    shell: 'genfstab -U /mnt'
+    register: fstab_output
+
+  - debug:
+      var: fstab_output.stdout_lines
+
   - name: Slurp fstab file
     slurp:
       src: /mnt/etc/fstab
@@ -236,7 +243,7 @@
 
   - debug: msg="{{ grubfile['content'] | b64decode }}"
 
-  - name: Show blkid
+  - name: Show grub mk-config
     shell: 'grub-mkconfig'
     register: grub_output
 
