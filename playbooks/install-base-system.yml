@@ -5,7 +5,7 @@
 
 - name: Insert selinux repo
   ansible.builtin.blockinfile:
-    path: /mnt/etc/pacman.conf
+    path: /etc/pacman.conf
     block: |
       [selinux]
       Server = https://github.com/archlinuxhardened/selinux/releases/download/ArchLinux-SELinux
