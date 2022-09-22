@@ -1,0 +1,51 @@
+- name: Pause for 1 minute for pacman-init.service to finish
+    ansible.builtin.pause:
+      minutes: 1
+
+  - name: Run pacstrap base system
+    command: pacstrap /mnt base linux-hardened linux-firmware
+
+  - name: Run genfstab
+    shell: 'genfstab -U /mnt > /mnt/etc/fstab'
+
+  - name: Set hostname to archlinux
+    copy: 
+      dest: /mnt/etc/hostname
+      content: archlinux
+
+  - name: set hosts
+    copy:
+      dest: /mnt/etc/hosts
+      content: |
+        127.0.0.1	localhost
+        ::1		localhost
+        127.0.1.1	archlinux.localdomain	archlinux
+
+  - name: Set modules
+    copy: 
+      dest: /mnt/etc/mkinitcpio.conf
+      force: yes
+      content: |
+        MODULES=(hv_storvsc hv_vmbus)
+        BINARIES=()
+        FILES=()
+        HOOKS=(base udev autodetect modconf block filesystems keyboard fsck)
+        COMPRESSION="zstd"
+
+  - name: Configure System
+    ignore_errors: true
+    command:
+      argv:
+        - /usr/bin/arch-chroot
+        - /mnt
+        - /bin/bash
+        - -c
+        - |
+          ln -sf /usr/share/zoneinfo/CET /etc/localtime
+          hwclock --systohc
+          locale-gen
+          echo -e "root\nroot" | passwd
+          pacman -Sy --noconfirm btrfs-progs openssh dhcpcd nano python sudo iwd
+          systemctl enable sshd
+          systemctl enable dhcpcd       
+          mkinitcpio -P || true

@@ -1,0 +1,37 @@
+---
+- name: set root partition for uefi
+  set_fact:
+    root_partition_number: "2"
+
+- name: Label {{ install_device_name }} as gpt
+  when: not root_mounted
+  community.general.parted:
+      device: "{{ install_device_name }}"
+      label: gpt
+
+- name: Create boot partition for uefi with a size of 512MB
+  when: not root_mounted
+  community.general.parted:
+    device: "{{ install_device_name }}"
+    number: 1
+    state: present
+    flags: esp
+    part_end: 512MB
+    fs_type: fat32
+
+- name: Create btrfs partition on uefi
+  when: not root_mounted
+  community.general.parted:
+    device: "{{ install_device_name }}"
+    number: 2
+    state: present
+    part_start: 512MB
+    part_end: 100%
+    fs_type: btrfs
+
+- name: Format efi boot partition
+  when: not boot_mounted
+  filesystem: 
+    dev: "{{ install_device_name }}1"
+    fstype: vfat
+    force: yes

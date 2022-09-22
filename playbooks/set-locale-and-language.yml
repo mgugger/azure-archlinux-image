@@ -1,0 +1,16 @@
+---
+- name: use locale en_US.UTF-8
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/locale.gen
+    regexp: '^en_US.UTF-8 UTF-8'
+    line: en_US.UTF-8 UTF-8
+
+- name: Set language to en_US.UTF-8 UTF-8"
+  copy: 
+    dest: /mnt/etc/locale.conf
+    content: LANG=en_US.UTF-8
+
+- name: Set keymap to de_CH-latin1
+  copy: 
+    dest: /mnt/etc/vconsole.conf
+    content: KEYMAP=de_CH-latin1

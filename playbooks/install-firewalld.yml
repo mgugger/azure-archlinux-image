@@ -1,0 +1,13 @@
+---
+- name: Install firewalld
+  ignore_errors: true
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        pacman -Sy --noconfirm firewalld nftables
+        firewall-cmd --zone public --permanent --add-rich-rule 'rule service name="ssh" accept limit value="2/m"'
+        systemctl enable firewalld
