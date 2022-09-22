@@ -204,6 +204,9 @@
         - -c
         - |
           pacman -Sy --noconfirm grub
+          echo "GRUB_DISABLE_OS_PROBER=true" >> /etc/default/grub
+          echo "GRUB_DISABLE_LINUX_UUID=true" >> /etc/default/grub
+          echo "GRUB_DISABLE_RECOVERY=true" >> /etc/default/grub
           grub-install {{ install_device_name }}
           grub-mkconfig -o /boot/grub/grub.cfg
 
