@@ -18,7 +18,7 @@
       - pacman -Syy
 
 - name: Run pacstrap base system
-  command: pacstrap /mnt base-selinux linux-hardened linux-firmware selinux-refpolicy-arch
+  command: pacstrap /mnt base-selinux linux-hardened linux-firmware
 
 - name: Run genfstab
   shell: 'genfstab -U /mnt > /mnt/etc/fstab'
@@ -60,7 +60,7 @@
         hwclock --systohc
         locale-gen
         echo -e "root\nroot" | passwd
-        pacman -Sy --noconfirm btrfs-progs openssh dhcpcd nano python sudo iwd
+        pacman -Sy --noconfirm btrfs-progs openssh dhcpcd nano python sudo selinux-refpolicy-arch
         systemctl enable sshd
         systemctl enable dhcpcd       
         mkinitcpio -P || true
