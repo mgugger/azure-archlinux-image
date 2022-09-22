@@ -151,12 +151,11 @@
         127.0.1.1	archlinux.localdomain	archlinux
 
   - name: Set modules
-    when: mkinitcpio_modules is defined
     copy: 
       dest: /mnt/etc/mkinitcpio.conf
       force: yes
       content: |
-        MODULES=({{ mkinitcpio_modules }})
+        MODULES=(hv_storvsc hv_vmbus)
         BINARIES=()
         FILES=()
         HOOKS=(base udev autodetect modconf block filesystems keyboard fsck)
@@ -205,45 +204,45 @@
         - |
           pacman -Sy --noconfirm grub
           echo "GRUB_DISABLE_OS_PROBER=true" >> /etc/default/grub
-          echo "GRUB_DISABLE_LINUX_UUID=true" >> /etc/default/grub
+          #echo "GRUB_DISABLE_LINUX_UUID=true" >> /etc/default/grub
           echo "GRUB_DISABLE_RECOVERY=true" >> /etc/default/grub
           grub-install {{ install_device_name }}
-          #grub-mkconfig -o /boot/grub/grub.cfg
+          grub-mkconfig -o /boot/grub/grub.cfg
 
-  #- name: Run genfstab
-  #  shell: 'genfstab -U /mnt > /mnt/etc/fstab'
+  - name: Run genfstab
+    shell: 'genfstab -U /mnt > /mnt/etc/fstab'
 
-  - name: create fstab
-    copy:
-      owner: root
-      group: root
-      force: yes
-      dest: /mnt/etc/fstab
-      content: |
-        /dev/sda1	/         	btrfs     	rw,noatime,compress=zstd:3,space_cache=v2,subvolid=5,subvol=/	0 0
+  # - name: create fstab
+  #   copy:
+  #     owner: root
+  #     group: root
+  #     force: yes
+  #     dest: /mnt/etc/fstab
+  #     content: |
+  #       /dev/sda1	/         	btrfs     	rw,noatime,compress=zstd:3,space_cache=v2,subvolid=5,subvol=/	0 0
 
-  - name: create grub.cfg
-    copy:
-      owner: root
-      group: root
-      force: yes
-      dest: /mnt/boot/grub/grub.cfg
-      content: |
-        set timeout=0
-        set default=0
+  # - name: create grub.cfg
+  #   copy:
+  #     owner: root
+  #     group: root
+  #     force: yes
+  #     dest: /mnt/boot/grub/grub.cfg
+  #     content: |
+  #       set timeout=0
+  #       set default=0
 
-        menuentry "Arch Linux" {
-            set gfxpayload=keep
-            insmod gzio
-            insmod part_msdos
-            insmod btrfs
+  #       menuentry "Arch Linux" {
+  #           set gfxpayload=keep
+  #           insmod gzio
+  #           insmod part_msdos
+  #           insmod btrfs
 
-            set root=(hd0,1)
-            echo 'Loading Linux linux-hardened ...'
-            linux /boot/vmlinuz-linux-hardened root=/dev/sda1 rw loglevel=3 quiet
-            echo 'Loading initial ramdisk ...'
-            initrd  /boot/initramfs-linux-hardened.img
-        }
+  #           set root=(hd0,1)
+  #           echo 'Loading Linux linux-hardened ...'
+  #           linux /boot/vmlinuz-linux-hardened root=/dev/sda1 rw loglevel=3 quiet
+  #           echo 'Loading initial ramdisk ...'
+  #           initrd  /boot/initramfs-linux-hardened.img
+  #       }
 
   - name: Show blkid
     shell: 'blkid'
