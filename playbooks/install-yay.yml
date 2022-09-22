@@ -7,7 +7,7 @@
       - /bin/bash
       - -c
       - |
-        pacman -S --needed git base-devel --noconfirm
+        pacman -S --needed git --noconfirm
 
 - name: clone yay
   command: 
