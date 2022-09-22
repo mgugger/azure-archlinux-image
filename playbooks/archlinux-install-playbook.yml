@@ -121,14 +121,6 @@
   - name: Run pacstrap base system
     command: pacstrap /mnt base linux-hardened linux-firmware
 
-  - name: Remove fstab
-    ansible.builtin.file:
-      path: /mnt/etc/fstab
-      state: absent
-
-  - name: Run genfstab
-    command: genfstab -U /mnt > /mnt/etc/fstab
-
   - name: Set hostname to archlinux
     copy: 
       dest: /mnt/etc/hostname
@@ -222,8 +214,16 @@
   - debug:
       var: command_output.stdout_lines
 
+  - name: Remove fstab
+    ansible.builtin.file:
+      path: /mnt/etc/fstab
+      state: absent
+
+  - name: Run genfstab
+    shell: 'genfstab -U /mnt > /mnt/etc/fstab'
+
   - name: Show genfstab output
-    shell: 'genfstab -U /mnt'
+    shell: 'genfstab -U /mnt > /mnt/etc/fstab'
     register: fstab_output
 
   - debug:
