@@ -210,6 +210,18 @@
           grub-install {{ install_device_name }}
           #grub-mkconfig -o /boot/grub/grub.cfg
 
+  #- name: Run genfstab
+  #  shell: 'genfstab -U /mnt > /mnt/etc/fstab'
+
+  - name: create fstab
+    copy:
+      owner: root
+      group: root
+      force: yes
+      dest: /mnt/etc/fstab
+      content: |
+        /dev/sda1	/         	btrfs     	rw,noatime,compress=zstd:3,space_cache=v2,subvolid=5,subvol=/	0 0
+
   - name: create grub.cfg
     copy:
       owner: root
@@ -221,7 +233,6 @@
         set default=0
 
         menuentry "Arch Linux" {
-            load_video
             set gfxpayload=keep
             insmod gzio
             insmod part_msdos
@@ -229,7 +240,7 @@
 
             set root=(hd0,1)
             echo 'Loading Linux linux-hardened ...'
-            linux /boot/vmlinuz-linux-hardened rw  loglevel=3 quiet
+            linux /boot/vmlinuz-linux-hardened root=/dev/sda1 rw loglevel=3 quiet
             echo 'Loading initial ramdisk ...'
             initrd  /boot/initramfs-linux-hardened.img
         }
@@ -245,9 +256,6 @@
     ansible.builtin.file:
       path: /mnt/etc/fstab
       state: absent
-
-  - name: Run genfstab
-    shell: 'genfstab -U /mnt > /mnt/etc/fstab'
 
   - name: Slurp fstab file
     slurp:
