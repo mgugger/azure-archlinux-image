@@ -3,8 +3,22 @@
   ansible.builtin.pause:
     minutes: 1
 
+- name: Insert selinux repo
+  ansible.builtin.blockinfile:
+    path: /mnt/etc/pacman.conf
+    block: |
+      [selinux]
+      Server = https://github.com/archlinuxhardened/selinux/releases/download/ArchLinux-SELinux
+      SigLevel = Never
+
+- name: Updata pacman repositories
+  ignore_errors: true
+  command:
+    argv:
+      - pacman -Syy
+
 - name: Run pacstrap base system
-  command: pacstrap /mnt base linux-hardened linux-firmware
+  command: pacstrap /mnt base-selinux linux-hardened linux-firmware
 
 - name: Run genfstab
   shell: 'genfstab -U /mnt > /mnt/etc/fstab'

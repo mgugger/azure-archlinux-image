@@ -1,0 +1,52 @@
+---
+- name: Install yay
+  command: 
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        pacman -S --needed git base-devel --noconfirm
+
+- name: clone yay
+  command: 
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        git clone https://aur.archlinux.org/yay-bin.git
+
+- name: makepkg
+  when: username is defined
+  command: 
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        cd yay-bin && sudo -u {{ username }} makepkg -si --noconfirm
+
+- name: makepkg
+  when: lookup('env', 'USER') != "root" and username is not defined
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+      cd yay-bin && makepkg -si --noconfirm
+
+- name: Install yay
+  command: 
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        rm -rf yay-bin

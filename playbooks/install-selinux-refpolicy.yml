@@ -1,0 +1,39 @@
+---
+- name: install arch refpolicy
+  when: username is defined
+  command: 
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        sudo -u {{ username }} yay -Sy --aur selinux-refpolicy-src
+        cd /etc/selinux/refpolicy/src/policy
+        make bare
+        make conf
+        make install
+        make load
+
+- name: set refind setting because incorrect settings due to arch-chroot 
+  when: username is defined
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/selinux/config
+    content: |
+      # This file controls the state of SELinux on the system.
+      # SELINUX= can take one of these three values:
+      #       enforcing - SELinux security policy is enforced.
+      #                   Set this value once you know for sure that SELinux is configured the way you like it and that your system is ready for deployment
+      #       permissive - SELinux prints warnings instead of enforcing.
+      #                    Use this to customise your SELinux policies and booleans prior to deployment. Recommended during policy development.
+      #       disabled - No SELinux policy is loaded.
+      #                  This is not a recommended setting, for it may cause problems with file labelling
+      SELINUX=permissive
+      # SELINUXTYPE= takes the name of SELinux policy to
+      # be used. Current options are:
+      #       refpolicy (vanilla reference policy)
+      #       <custompolicy> - Substitute <custompolicy> with the name of any custom policy you choose to load
+      SELINUXTYPE=refpolicy

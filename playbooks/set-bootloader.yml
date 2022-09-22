@@ -23,9 +23,14 @@
       - -c
       - |
         pacman -Sy --noconfirm grub
+        sed -i /GRUB_DISABLE_OS_PROBER/d  /etc/default/grub
         echo "GRUB_DISABLE_OS_PROBER=true" >> /etc/default/grub
-        #echo "GRUB_DISABLE_LINUX_UUID=true" >> /etc/default/grub
+        sed -i /GRUB_DISABLE_RECOVERY/d  /etc/default/grub
         echo "GRUB_DISABLE_RECOVERY=true" >> /etc/default/grub
+        sed -i /GRUB_TIMEOUT/d  /etc/default/grub
+        echo "GRUB_TIMEOUT=0" >> /etc/default/grub
+        sed -i /GRUB_CMDLINE_LINUX_DEFAULT/d  /etc/default/grub
+        echo 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash lsm=landlock,lockdown,yama,integrity,selinux,bpf" >> /etc/default/grub'
         grub-install {{ install_device_name }}
         grub-mkconfig -o /boot/grub/grub.cfg
 

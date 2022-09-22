@@ -44,3 +44,7 @@
   - include_tasks: install-firewalld.yml
 
   - include_tasks: add-user.yml
+
+  - include_tasks: install-yay.yml
+
+  - include_tasks: install-selinux-refpolicy.yml
