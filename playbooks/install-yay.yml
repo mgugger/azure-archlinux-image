@@ -21,7 +21,7 @@
 
 - name: makepkg
   when: username is defined
-  command: 
+  command:
     argv:
       - /usr/bin/arch-chroot
       - /mnt
@@ -39,7 +39,7 @@
       - /bin/bash
       - -c
       - |
-      cd yay-bin && makepkg -si --noconfirm
+        cd yay-bin && makepkg -si --noconfirm
 
 - name: Install yay
   command: 
