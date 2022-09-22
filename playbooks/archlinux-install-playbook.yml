@@ -222,13 +222,6 @@
   - name: Run genfstab
     shell: 'genfstab -U /mnt > /mnt/etc/fstab'
 
-  - name: Show genfstab output
-    shell: 'genfstab -U /mnt > /mnt/etc/fstab'
-    register: fstab_output
-
-  - debug:
-      var: fstab_output.stdout_lines
-
   - name: Slurp fstab file
     slurp:
       src: /mnt/etc/fstab
@@ -242,13 +235,6 @@
     register: grubfile
 
   - debug: msg="{{ grubfile['content'] | b64decode }}"
-
-  - name: Show grub mk-config
-    shell: 'grub-mkconfig'
-    register: grub_output
-
-  - debug:
-      var: grub_output.stdout_lines
 
   - name: Install cloud-init
     ignore_errors: true
