@@ -222,11 +222,19 @@
   - debug:
       var: command_output.stdout_lines
 
-  - ansible.builtin.debug:
-      msg: "the value of fstab is {{lookup('ansible.builtin.file', '/mnt/etc/fstab') }}"
+  - name: Slurp fstab file
+    slurp:
+      src: /mnt/etc/fstab
+    register: fstabfile
 
-  - ansible.builtin.debug:
-      msg: "the value of grub.cfg is {{lookup('ansible.builtin.file', '/mnt/boot/grub/grub.cfg') }}"
+  - debug: msg="{{ fstabfile['content'] | b64decode }}"
+
+  - name: Slurp grub file
+    slurp:
+      src: /mnt/boot/grub/grub.cfg
+    register: grubfile
+
+  - debug: msg="{{ grubfile['content'] | b64decode }}"
 
   - name: Show blkid
     shell: 'grub-mkconfig'
