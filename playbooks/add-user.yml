@@ -13,9 +13,10 @@
         echo -e "{{ ansible_ssh_pass }}\n{{ ansible_ssh_pass }}" | passwd {{ username }}
         {% endif %}
         gpasswd -a {{ username }} wheel
+        gpasswd -a {{ username }} uucp
         mkdir /home/{{ username }}/.ssh
         echo "{{ user_ssh_public_key | default("") }}" >> /home/{{ username }}/.ssh/authorized_keys
-        
+       
 - name: allow admin user passwordless sudo
   when: username is defined
   ansible.builtin.lineinfile:
