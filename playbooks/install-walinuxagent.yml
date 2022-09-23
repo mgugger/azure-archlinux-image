@@ -8,4 +8,4 @@
       - -c
       - |
         sudo -u {{ username }} yay -Sy --noconfirm --aur walinuxagent || true
-        systemctl enable walinuxagent
+        systemctl enable waagent
