@@ -7,5 +7,5 @@
       - /bin/bash
       - -c
       - |
-        sudo -u {{ username }} yay -Sy --noconfirm --aur walinuxagent
+        sudo -u {{ username }} yay -Sy --noconfirm --aur walinuxagent || true
         systemctl enable walinuxagent
