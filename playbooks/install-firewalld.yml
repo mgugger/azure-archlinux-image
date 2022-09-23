@@ -10,4 +10,5 @@
       - |
         pacman -Sy --noconfirm firewalld nftables
         firewall-cmd --zone public --permanent --add-rich-rule 'rule service name="ssh" accept limit value="2/m"'
+        firewall-cmd --permanent --direct --add-rule ipv4 filter INPUT 0 -p icmp -s 10.0.0.0/8 -d 10.0.0.0/8 -j ACCEPT
         systemctl enable firewalld
