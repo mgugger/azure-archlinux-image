@@ -64,7 +64,6 @@
         mkinitcpio -P || true
 
 - name: enable sshd
-  ignore_errors: true
   command:
     argv:
       - /usr/bin/arch-chroot
@@ -75,7 +74,6 @@
         systemctl enable sshd
 
 - name: enable dhcpcd
-  ignore_errors: true
   command:
     argv:
       - /usr/bin/arch-chroot
