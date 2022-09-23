@@ -60,7 +60,27 @@
         hwclock --systohc
         locale-gen
         echo -e "root\nroot" | passwd
-        pacman -Sy --noconfirm btrfs-progs openssh dhcpcd nano python sudo selinux-refpolicy-arch
-        systemctl enable sshd
-        systemctl enable dhcpcd       
+        pacman -Sy --noconfirm btrfs-progs openssh dhcpcd nano python sudo
         mkinitcpio -P || true
+
+- name: enable sshd
+  ignore_errors: true
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        systemctl enable sshd
+
+- name: enable dhcpcd
+  ignore_errors: true
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        systemctl enable dhcpcd
