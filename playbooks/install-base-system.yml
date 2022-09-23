@@ -18,7 +18,7 @@
       - pacman -Syy
 
 - name: Run pacstrap base system
-  command: pacstrap /mnt base-selinux linux-hardened linux-firmware
+  command: pacstrap /mnt base-selinux linux linux-firmware
 
 - name: Run genfstab
   shell: 'genfstab -U /mnt > /mnt/etc/fstab'
