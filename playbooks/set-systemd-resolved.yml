@@ -9,6 +9,11 @@
       - |
         systemctl enable systemd-resolved
 
+- name: Create resolved.conf.d directory
+  ansible.builtin.file:
+    path: /mnt/etc/systemd/resolved.conf.d
+    state: directory
+
 - name: enable dnssec
   copy:
     force: yes

@@ -11,13 +11,7 @@
       Server = https://github.com/archlinuxhardened/selinux/releases/download/ArchLinux-SELinux
       SigLevel = Never
 
-- name: Updata pacman repositories
-  ignore_errors: true
-  command:
-    argv:
-      - pacman -Syy
-
-- name: Run pacstrap base system
+- name: pacstrap base system with linux-hardened and selinux
   command: pacstrap /mnt base-selinux linux-hardened linux-firmware
 
 - name: Run genfstab
