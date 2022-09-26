@@ -18,7 +18,7 @@
       - pacman -Syy
 
 - name: Run pacstrap base system
-  command: pacstrap /mnt base-selinux linux linux-firmware
+  command: pacstrap /mnt base-selinux linux-hardened linux-firmware
 
 - name: Run genfstab
   shell: 'genfstab -U /mnt > /mnt/etc/fstab'
@@ -73,7 +73,7 @@
       - |
         systemctl enable sshd
 
-- name: enable dhcpcd
+- name: enable systemd-networkd
   command:
     argv:
       - /usr/bin/arch-chroot
@@ -81,4 +81,25 @@
       - /bin/bash
       - -c
       - |
-        systemctl enable dhcpcd
+        systemctl enable systemd-networkd
+
+- name: enable systemd-networkd
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        systemctl enable systemd-resolved
+
+- name: Set wired networkd config
+  copy: 
+    dest: /etc/systemd/network/20-wired.network
+    force: yes
+    content: |
+      [Match]
+      Name=eth0
+
+      [Network]
+      DHCP=yes
