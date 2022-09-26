@@ -7,6 +7,7 @@
     install_device_name: /dev/vda
     bootloader: bios
     cloud_init: true
+    network_interface_name: eth0
   tasks:
   - name: Check device name {{ install_device_name }} exists
     stat: "path={{ install_device_name }}"
@@ -38,6 +39,8 @@
   - include_tasks: set-locale-and-language.yml
 
   - include_tasks: set-bootloader.yml
+
+  - include_tasks: set-systemd-resolved.yml
 
   - include_tasks: install-cloud-init.yml
 

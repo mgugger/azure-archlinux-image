@@ -60,7 +60,7 @@
         hwclock --systohc
         locale-gen
         echo -e "root\nroot" | passwd
-        pacman -Sy --noconfirm btrfs-progs openssh dhcpcd nano python sudo
+        pacman -Sy --noconfirm btrfs-progs openssh nano python sudo wireguard-tools
         mkinitcpio -P || true
 
 - name: enable sshd
@@ -83,23 +83,13 @@
       - |
         systemctl enable systemd-networkd
 
-- name: enable systemd-networkd
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
-        systemctl enable systemd-resolved
-
 - name: Set wired networkd config
   copy: 
     dest: /etc/systemd/network/20-wired.network
     force: yes
     content: |
       [Match]
-      Name=eth0
+      Name={{ network_interface_name }}
 
       [Network]
       DHCP=yes

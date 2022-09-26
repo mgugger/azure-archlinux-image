@@ -15,7 +15,7 @@
         gpasswd -a {{ username }} wheel
         gpasswd -a {{ username }} uucp
         mkdir /home/{{ username }}/.ssh
-        echo "{{ user_ssh_public_key | default("") }}" >> /home/{{ username }}/.ssh/authorized_keys
+        echo "{{ user_ssh_public_key }}" >> /home/{{ username }}/.ssh/authorized_keys
        
 - name: allow admin user passwordless sudo
   when: username is defined

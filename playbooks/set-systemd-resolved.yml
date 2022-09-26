@@ -1,0 +1,29 @@
+---
+- name: enable systemd-networkd
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        systemctl enable systemd-resolved
+
+- name: enable dnssec
+  copy:
+    force: yes
+    mode: 0644
+    dest: /mnt/etc/systemd/resolved.conf.d/dnssec.conf
+    content: |
+      [Resolve]
+      DNSSEC=true
+
+- name: Copy nameserver for systemd-resolved
+  copy:
+    force: yes
+    mode: 0644
+    dest: /mnt/etc/systemd/resolved.conf.d/dns_over_tls.conf
+    content: |
+      [Resolve]
+      DNS=9.9.9.9#dns.quad9.net
+      DNSOverTLS=yes

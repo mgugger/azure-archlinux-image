@@ -1,0 +1,11 @@
+---
+- name: Install pacman-auto-update
+  command: 
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        sudo -u {{ username }} yay -Sy --noconfirm --aur pacman-auto-update || true
+        systemctl enable pacman-auto-update.timer
