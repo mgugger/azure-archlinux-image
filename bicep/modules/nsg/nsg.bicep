@@ -22,6 +22,20 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2020-07-01' = {
         }
       }
       {
+        name: 'allow_intra_vnet'
+        properties: {
+          description: 'Allow alternative ssh inbound'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRange: '22'
+          sourceAddressPrefix: 'VirtualNetwork'
+          destinationAddressPrefix: 'VirtualNetwork'
+          access: 'Allow'
+          priority: 1002
+          direction: 'Inbound'
+        }
+      }
+      {
         name: 'deny_catchall'
         properties: {
           description: 'Deny all inbound traffic'
