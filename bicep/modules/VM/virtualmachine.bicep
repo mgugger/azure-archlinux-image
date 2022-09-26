@@ -5,9 +5,9 @@ param vm_admin_name string
 param location string = resourceGroup().location
 
 module nic '../vnet/nic.bicep' = {
-  name: 'vm-wireguard-nic'
+  name: 'vm-imagebuilder-nic'
   params: {
-    name: 'vm-wireguard'
+    name: 'vm-imagebuilder'
     location: location
     subnetId: subnetId
     publicIpId: publicIpId
