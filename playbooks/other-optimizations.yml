@@ -1,0 +1,57 @@
+---
+- name: Create resolved.conf.d directory
+  ansible.builtin.file:
+    path: /mnt/etc/sysctl.d
+    state: directory
+
+- name: oom_kill_allocating_task
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/sysctl.d/custom_settings.conf
+    content: |
+      vm.oom_kill_allocating_task = 1
+      net.core.netdev_max_backlog = 16384
+      vm.swappiness = 0
+      vm.dirty_ratio = 60
+      vm.vfs_cache_pressure = 50
+      vm.dirty_background_ratio = 5
+      vm.dirty_expire_centisecs = 12000
+      net.core.somaxconn = 8192
+      net.core.netdev_max_backlog = 5000
+      net.core.rmem_max = 16777216
+      net.core.wmem_max = 16777216
+      net.ipv4.tcp_wmem = 4096 12582912 16777216
+      net.ipv4.tcp_rfc1337 = 1
+      net.ipv4.tcp_rmem = 4096 12582912 16777216
+      net.ipv4.tcp_max_syn_backlog = 8192
+      net.ipv4.tcp_slow_start_after_idle = 0
+      net.ipv4.tcp_tw_reuse = 1
+      net.ipv4.ip_local_port_range = 10240 65535
+      net.ipv4.tcp_abort_on_overflow = 1
+      net.ipv4.conf.default.rp_filter = 1
+      net.ipv4.conf.all.rp_filter = 1
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv4.conf.all.secure_redirects = 0
+      net.ipv4.conf.default.secure_redirects = 0
+      net.ipv6.conf.all.accept_redirects = 0
+      net.ipv6.conf.default.accept_redirects = 0
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+
+- name: /etc/tmpfiles.d/ for systemd-tmpfile
+  ansible.builtin.file:
+    path: /mnt/etc/tmpfiles.d/
+    state: directory
+
+- name: local tmpfiles conf
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/sysctl.d/custom_settings.conf
+    content: |
+      w /sys/kernel/mm/transparent_hugepage/enabled - - - - never
+      w /sys/kernel/mm/transparent_hugepage/defrag - - - - never

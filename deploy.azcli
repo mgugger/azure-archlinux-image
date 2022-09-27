@@ -5,7 +5,7 @@ vm_admin_name=$(whoami)
 local_public_ip=$(curl ifconfig.me)
 
 # Create / Update the deployment (replace AAD Group ID)
-az deployment group create -n "$baseline-main" -g "image-builder" -f "bicep/main.bicep" \
+az deployment group create -n "$baseline-main" -g "vm-imagebuilder" -f "bicep/main.bicep" \
     --parameters baseName=$baseline \
     --parameters pubkeydata="$pubkeydata" \
     --parameters vm_admin_name="$vm_admin_name" \

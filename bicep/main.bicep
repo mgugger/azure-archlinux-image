@@ -90,12 +90,12 @@ module sta 'modules/storage/storage_account.bicep' = {
 }
 
 // Sample VM
-module vm_from_vhd_sample 'modules/VM/virtualmachine_from_vhd.bicep' = {
-  name: 'vm-vhd-sample'
-  params: {
-    staId: sta.outputs.id
-    staName: sta.outputs.name
-    location: location
-    subnetId: vnet.outputs.vnetSubnets[0].id
-  }
-}
+// module vm_from_vhd_sample 'modules/VM/virtualmachine_from_vhd.bicep' = {
+//   name: 'vm-vhd-sample'
+//   params: {
+//     staId: sta.outputs.id
+//     staName: sta.outputs.name
+//     location: location
+//     subnetId: vnet.outputs.vnetSubnets[0].id
+//   }
+// }
