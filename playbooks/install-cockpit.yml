@@ -10,4 +10,4 @@
       - |
         pacman -Sy --noconfirm cockpit cockpit-machines cockpit-podman cockpit-packagekit cockpit-storaged udisks2
         firewall-cmd --permanent --add-port=9090/tcp
-        systemctl enable cockpit
+        systemctl enable cockpit.socket
