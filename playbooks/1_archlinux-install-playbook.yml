@@ -51,3 +51,5 @@
   - include_tasks: install-yay.yml
 
   - include_tasks: install-walinuxagent.yml
+
+  - include_tasks: install-cockpit.yml

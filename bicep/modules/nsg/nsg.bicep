@@ -22,6 +22,20 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2020-07-01' = {
         }
       }
       {
+        name: 'cockpit'
+        properties: {
+          description: 'Allow alternative ssh inbound'
+          protocol: '*'
+          sourcePortRange: '*'
+          destinationPortRange: '9090'
+          sourceAddressPrefix: local_public_ip
+          destinationAddressPrefix: 'VirtualNetwork'
+          access: 'Allow'
+          priority: 1101
+          direction: 'Inbound'
+        }
+      }
+      {
         name: 'allow_intra_vnet'
         properties: {
           description: 'Allow alternative ssh inbound'
@@ -31,7 +45,7 @@ resource nsg 'Microsoft.Network/networkSecurityGroups@2020-07-01' = {
           sourceAddressPrefix: 'VirtualNetwork'
           destinationAddressPrefix: 'VirtualNetwork'
           access: 'Allow'
-          priority: 1002
+          priority: 1201
           direction: 'Inbound'
         }
       }
