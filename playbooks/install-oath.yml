@@ -58,5 +58,5 @@
 
 - name: create qr code
   delegate_to: localhost
-  command: qrencode -t UTF8 'otpauth://totp/{{ username }}@archlinux?secret=$(oathtool -v --totp -d 6 4ef4bbc7e6d2bd819e66 | grep "^Base32 secret:" | sed "s/^.*: //")'
+  command: "qrencode -t UTF8 'otpauth://totp/{{ username }}@archlinux?secret=$(oathtool -v --totp -d 6 {{ random_seed }} | grep '^Base32 secret:' | sed 's/^.*: //')'"
   
