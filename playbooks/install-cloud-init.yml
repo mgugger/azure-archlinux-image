@@ -21,16 +21,7 @@
     force: yes
     dest: /mnt/etc/cloud/cloud.cfg
     content: |
-      #cloud-config
-      users:
-        - name: {{ username }}
-          sudo: ["ALL=(ALL) NOPASSWD:ALL"]
-          shell: /bin/bash
-          groups: [users, wheel, uucp]
-          lock_passwd: true
-          ssh_authorized_keys:
-            - {{ user_ssh_public_key }}
-      
+      #cloud-config      
       disable_root: true
       preserve_hostname: false
       datasource_list: [ Azure ]

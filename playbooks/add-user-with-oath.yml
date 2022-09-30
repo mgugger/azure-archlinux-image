@@ -1,4 +1,28 @@
 ---
+- name: Add user
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        useradd -m {{ username }}
+        {% if ansible_ssh_pass is defined %}
+        echo -e "{{ ansible_ssh_pass }}\n{{ ansible_ssh_pass }}" | passwd {{ username }}
+        {% endif %}
+        gpasswd -a {{ username }} wheel
+        gpasswd -a {{ username }} uucp
+        gpasswd -a {{ username }} users
+        mkdir /home/{{ username }}/.ssh
+        echo "{{ user_ssh_public_key }}" >> /home/{{ username }}/.ssh/authorized_keys
+       
+- name: allow admin user passwordless sudo
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/sudoers
+    regexp: '^{{ username }} ALL=(ALL:ALL) NOPASSWD:ALL'
+    line: "{{ username }} ALL=(ALL:ALL) NOPASSWD:ALL"
+
 - name: Install oath-toolkit
   command:
     argv:
@@ -56,7 +80,7 @@
     insertbefore: BOF
     line: auth	  sufficient pam_oath.so usersfile=/etc/users.oath window=30 digits=6
 
-- name: create qr code
+- name: create qr code and store locally in totp.utf8
   delegate_to: localhost
-  command: "qrencode -t UTF8 'otpauth://totp/{{ username }}@archlinux?secret=$(oathtool -v --totp -d 6 {{ random_seed }} | grep '^Base32 secret:' | sed 's/^.*: //')'"
+  command: "qrencode -t UTF8 'otpauth://totp/{{ username }}@archlinux?secret=$(oathtool -v --totp -d 6 {{ random_seed }} | grep '^Base32 secret:' | sed 's/^.*: //')' > totp.utf8"
   
