@@ -11,31 +11,31 @@
 
 - name: allow sshd ChallengeResponseAuthentication 
   ansible.builtin.lineinfile:
-    path: /mnt/ssh/sshd_config
+    path: /mnt/etc/ssh/sshd_config
     regexp: ChallengeResponseAuthentication
     line: ChallengeResponseAuthentication yes
 
 - name: allow sshd UsePAM 
   ansible.builtin.lineinfile:
-    path: /mnt/ssh/sshd_config
+    path: /mnt/etc/ssh/sshd_config
     regexp: UsePAM
     line: UsePAM yes
 
 - name: enforce oath auth method
   ansible.builtin.lineinfile:
-    path: /mnt/ssh/sshd_config
+    path: /mnt/etc/ssh/sshd_config
     regexp: AuthenticationMethods
     line: AuthenticationMethods publickey,keyboard-interactive:pam
 
 - name: enforce KbdInteractiveAuthentication 
   ansible.builtin.lineinfile:
-    path: /mnt/ssh/sshd_config
+    path: /mnt/etc/ssh/sshd_config
     regexp: KbdInteractiveAuthentication
     line: KbdInteractiveAuthentication yes
 
 - name: disable Passwordauthentication 
   ansible.builtin.lineinfile:
-    path: /mnt/ssh/sshd_config
+    path: /mnt/etc/ssh/sshd_config
     regexp: PasswordAuthentication
     line: PasswordAuthentication no
 
@@ -45,7 +45,7 @@
     group: root
     mode: '0600'
     force: yes
-    dest: /mnt/etc/cloud/cloud.cfg
+    dest: /mnt/etc/users.oath
     content: |
       # Option User Prefix Seed
       HOTP/T30/6 {{ username }} - {{ random_seed }}
