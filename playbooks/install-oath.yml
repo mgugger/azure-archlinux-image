@@ -1,0 +1,62 @@
+---
+- name: Install oath-toolkit
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        pacman -Sy --noconfirm oath-toolkit
+
+- name: allow sshd ChallengeResponseAuthentication 
+  ansible.builtin.lineinfile:
+    path: /mnt/ssh/sshd_config
+    regexp: ChallengeResponseAuthentication
+    line: ChallengeResponseAuthentication yes
+
+- name: allow sshd UsePAM 
+  ansible.builtin.lineinfile:
+    path: /mnt/ssh/sshd_config
+    regexp: UsePAM
+    line: UsePAM yes
+
+- name: enforce oath auth method
+  ansible.builtin.lineinfile:
+    path: /mnt/ssh/sshd_config
+    regexp: AuthenticationMethods
+    line: AuthenticationMethods publickey,keyboard-interactive:pam
+
+- name: enforce KbdInteractiveAuthentication 
+  ansible.builtin.lineinfile:
+    path: /mnt/ssh/sshd_config
+    regexp: KbdInteractiveAuthentication
+    line: KbdInteractiveAuthentication yes
+
+- name: disable Passwordauthentication 
+  ansible.builtin.lineinfile:
+    path: /mnt/ssh/sshd_config
+    regexp: PasswordAuthentication
+    line: PasswordAuthentication no
+
+- name: set oath config
+  copy:
+    owner: root
+    group: root
+    mode: '0600'
+    force: yes
+    dest: /mnt/etc/cloud/cloud.cfg
+    content: |
+      # Option User Prefix Seed
+      HOTP/T30/6 {{ username }} - {{ random_seed }}
+
+- name: set pam to use oath
+  lineinfile:
+    path: /mnt/etc/pam.d/sshd
+    insertbefore: BOF
+    line: auth	  sufficient pam_oath.so usersfile=/etc/users.oath window=30 digits=6
+
+- name: create qr code
+  delegate_to: localhost
+  command: qrencode -t UTF8 'otpauth://totp/{{ username }}@archlinux?secret=$(oathtool -v --totp -d 6 4ef4bbc7e6d2bd819e66 | grep "^Base32 secret:" | sed "s/^.*: //")'
+  

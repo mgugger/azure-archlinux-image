@@ -2,7 +2,8 @@
     "variables": {
         "username": null,
         "publickey": null,
-        "storage_account_name": null
+        "storage_account_name": null,
+        "random_seed_for_oath": null
     },
     "builders": [
         {
@@ -42,7 +43,7 @@
             "type": "ansible",
             "user": "root",
             "playbook_file": "playbooks/1_archlinux-install-playbook.yml",
-            "extra_arguments": [ "--extra-vars", "username={{user `username`}} user_ssh_public_key={{user `publickey`}}", "-v" ]
+            "extra_arguments": [ "--extra-vars", "username={{user `username`}} user_ssh_public_key={{user `publickey`}} random_seed={{user `random_seed_for_oath`}}", "-v" ]
         }
     ],
     "post-processors": [

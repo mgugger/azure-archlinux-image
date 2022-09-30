@@ -21,14 +21,16 @@
     force: yes
     dest: /mnt/etc/cloud/cloud.cfg
     content: |
+      #cloud-config
       users:
         - name: {{ username }}
           sudo: ["ALL=(ALL) NOPASSWD:ALL"]
           shell: /bin/bash
-          groups: users, wheel
+          groups: [users, wheel, uucp]
           lock_passwd: true
           ssh_authorized_keys:
             - {{ user_ssh_public_key }}
+      
       disable_root: true
       preserve_hostname: false
       datasource_list: [ Azure ]
@@ -87,7 +89,7 @@
             templates_dir: /etc/cloud/templates/
         ssh_svcname: sshd   
 
-      #cloud-config
+      # Mount temp disk as swap
       device_aliases: {'ephemeral0': '/dev/disk/cloud/azure_resource'}
       disk_setup:
         ephemeral0:

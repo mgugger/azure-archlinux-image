@@ -10,4 +10,4 @@ This can be used to easily create an archlinux image to use with azure VMs.
 2. SSH into the VM with ssh @HOST -p22222
 3. Add your user to the kvm and libvirt group with ```sudo gpasswd -a $(whoami) kvm && sudo gpasswd -a $(whoami) libvirt && sudo reboot now```
 4. Run and replace the storage account variable with the storage account name you want to upload the vhd to:
-````packer build -var "username=$(whoami)" -var "publickey=\"$(cat ~/.ssh/authorized_keys)\"" -var "storage_account_name=TODO" archlinux-packer.json```
+````packer build -var "username=$(whoami)" -var "publickey=\"$(cat ~/.ssh/authorized_keys)\"" -var "storage_account_name=TODO" -var "random_seed_for_oath=$(openssl rand -hex 10)" archlinux-packer.json```
