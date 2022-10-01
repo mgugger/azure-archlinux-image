@@ -20,7 +20,7 @@
     force: yes
     dest: /mnt/etc/pam.d/cockpit
     content: |
-    account   include   system-remote-login
-    password  include   system-remote-login
-    session   include   system-remote-login
-    auth	  required pam_oath.so usersfile=/etc/users.oath window=30 digits=6
+      account   include   system-remote-login
+      password  include   system-remote-login
+      session   include   system-remote-login
+      auth	  required pam_oath.so usersfile=/etc/users.oath window=30 digits=6
