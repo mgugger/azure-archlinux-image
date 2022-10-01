@@ -8,8 +8,6 @@
     bootloader: bios
     cloud_init: true
     network_interface_name: eth0
-    random_seed: bfa460f127c3825dbc8b
-    username: manuel
   tasks:
   - name: Check device name {{ install_device_name }} exists
     stat: "path={{ install_device_name }}"
