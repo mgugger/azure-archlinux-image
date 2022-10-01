@@ -8,8 +8,8 @@
       - /bin/bash
       - -c
       - |
-        pacman -Sy --noconfirm cockpit cockpit-machines cockpit-podman cockpit-pcp cockpit-packagekit cockpit-storaged udisks2 sscg nfs-utils
-        firewall-offline-cmd --zone public --add-rich-rule 'rule port port=9090 protocol=tcp accept limit value="30/m"'
+        pacman -Sy --noconfirm cockpit cockpit-podman cockpit-pcp cockpit-storaged udisks2 sscg nfs-utils # cockpit-packagekit cockpit-machines 
+        firewall-offline-cmd --zone public --add-rich-rule 'rule port port=9090 protocol=tcp accept limit value="100/m"'
         systemctl enable cockpit.socket
         systemctl enable pmlogger.service
 
