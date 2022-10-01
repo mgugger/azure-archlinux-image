@@ -55,7 +55,7 @@
                 "azcopy copy ./packer_output/archlinux.vhd https://{{user `storage_account_name`}}.blob.core.windows.net/archlinux/",
                 "echo \"random seed is: {{user `random_seed_for_oath` }} and base32 $(oathtool -v --totp -d 6 {{user `random_seed_for_oath` }} | grep '^Base32 secret:' | sed 's/^.*: //')\"",
                 "echo \"QR Code for oath otp is\"",
-                "qrencode -t UTF8 \"otpauth://totp/Archlinux:manuel@archlinux?secret=$(oathtool -v --totp -d 6 {{user `random_seed_for_oath` }} | grep '^Base32 secret:' | sed 's/^.*: //')&issuer={{user `username`}}\"",
+                "qrencode -t UTF8 \"otpauth://totp/Archlinux:{{user `username` }}@archlinux?secret=$(oathtool -v --totp -d 6 {{user `random_seed_for_oath` }} | grep \"^Base32 secret:\" | cut -d \" \" -f3)&issuer={{user `username`}}\"",
                 "rm -rf packer_output/"
             ]
         }
