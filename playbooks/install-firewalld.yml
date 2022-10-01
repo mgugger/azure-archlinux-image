@@ -9,5 +9,6 @@
       - -c
       - |
         pacman -Sy --noconfirm firewalld nftables
-        firewall-offline-cmd --zone public --add-rich-rule 'rule service name="ssh" accept limit value="2/m"'
+        firewall-offline-cmd --direct --add-rule ipv4 filter INPUT_direct 0 -p tcp --dport 22 -m state --state NEW -m recent --set
+        firewall-offline-cmd --direct --add-rule ipv4 filter INPUT_direct 1 -p tcp --dport 22 -m state --state NEW -m recent --update --seconds 60 --hitcount 3 -j REJECT --reject-with tcp-reset
         systemctl enable firewalld

@@ -8,9 +8,11 @@
       - /bin/bash
       - -c
       - |
-        pacman -Sy --noconfirm cockpit cockpit-machines cockpit-podman cockpit-packagekit cockpit-storaged udisks2
-        firewall-offline-cmd --add-rich-rule='rule port port=9090 protocol=tcp accept limit value="20/m"'
+        pacman -Sy --noconfirm cockpit cockpit-machines cockpit-podman cockpit-pcp cockpit-packagekit cockpit-storaged udisks2 sscg nfs-utils
+        firewall-offline-cmd --direct --add-rule ipv4 filter INPUT_direct 0 -p tcp --dport 22 -m state --state NEW -m recent --set
+        firewall-offline-cmd --direct --add-rule ipv4 filter INPUT_direct 1 -p tcp --dport 22 -m state --state NEW -m recent --update --seconds 30 --hitcount 30 -j REJECT --reject-with tcp-reset
         systemctl enable cockpit.socket
+        systemctl enable pmlogger.service
 
 - name: set cockpit pam to use oath
   when: cloud_init
@@ -20,6 +22,8 @@
     force: yes
     dest: /mnt/etc/pam.d/cockpit
     content: |
+      #%PAM-1.0
+      auth      include   system-remote-login
       account   include   system-remote-login
       password  include   system-remote-login
       session   include   system-remote-login
