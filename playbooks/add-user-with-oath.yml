@@ -79,17 +79,3 @@
     path: /mnt/etc/pam.d/sshd
     insertbefore: BOF
     line: auth	  sufficient pam_oath.so usersfile=/etc/users.oath window=30 digits=6
-
-- name: convert random seed to base32
-  shell: "oathtool -v --totp -d 6 {{ random_seed }} | grep '^Base32 secret:' | sed 's/^.*: //'"
-  register: random_seed_base32
-  delegate_to: localhost
-
-- name: store random_seed in totp.hexa
-  shell: echo "{{ random_seed }}" > totp.hexa
-  delegate_to: localhost
-
-- name: create qr code and store locally in totp.utf8
-  delegate_to: localhost
-  command: qrencode -t UTF8 'otpauth://totp/{{ username }}@archlinux?secret={{ random_seed_base32 }}' > totp.utf8
-  
