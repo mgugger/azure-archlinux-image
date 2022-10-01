@@ -25,5 +25,5 @@ runcmd:
   - sudo rm /usr/bin/azcopy
   - sudo cp ./azcopy_linux_amd64_*/azcopy /usr/bin/
   - sudo chmod 777 /usr/bin/azcopy
-  - # Install Qrencode
-  - sudo apt install -y qrencode
+  - # Install Qrencode and oathtool
+  - sudo apt install -y qrencode oathtool
