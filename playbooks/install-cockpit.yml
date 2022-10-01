@@ -25,8 +25,3 @@
       account   include   system-remote-login
       password  include   system-remote-login
       session   include   system-remote-login
-
-- name: 
-  lineinfile:
-    path: 
-    line: 
