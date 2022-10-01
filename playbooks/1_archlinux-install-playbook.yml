@@ -1,13 +1,15 @@
 ---
 # playbook.yml
 - name: 'Provision Arch Linux'
-  hosts: default
+  hosts: all
   become: true
   vars:
     install_device_name: /dev/vda
     bootloader: bios
     cloud_init: true
     network_interface_name: eth0
+    random_seed: bfa460f127c3825dbc8b
+    username: manuel
   tasks:
   - name: Check device name {{ install_device_name }} exists
     stat: "path={{ install_device_name }}"
@@ -53,5 +55,7 @@
   - include_tasks: install-walinuxagent.yml
 
   - include_tasks: install-cockpit.yml
+
+  - include_tasks: set-auto-update.yml
 
   - include_tasks: other-optimizations.yml

@@ -9,5 +9,5 @@
       - -c
       - |
         pacman -Sy --noconfirm firewalld nftables
-        firewall-cmd --zone public --permanent --add-rich-rule 'rule service name="ssh" accept limit value="2/m"'
+        firewall-offline-cmd --zone public --add-rich-rule 'rule service name="ssh" accept limit value="2/m"'
         systemctl enable firewalld

@@ -41,6 +41,10 @@
       HOOKS=(base udev autodetect modconf block filesystems keyboard fsck)
       COMPRESSION="zstd"
 
+- name: generate root pw
+  set_fact:
+    root_pw: "{{ lookup('password', '/dev/null chars=ascii_letters,digit length=32') | lower }}"
+
 - name: Configure System
   ignore_errors: true
   command:
@@ -53,7 +57,8 @@
         ln -sf /usr/share/zoneinfo/CET /etc/localtime
         hwclock --systohc
         locale-gen
-        echo -e "root\nroot" | passwd
+        echo -e "{{root_pw}}\n{{root_pw}}" | passwd
+        passwd -l root
         pacman -Sy --noconfirm btrfs-progs openssh nano python sudo wireguard-tools
         mkinitcpio -P || true
 

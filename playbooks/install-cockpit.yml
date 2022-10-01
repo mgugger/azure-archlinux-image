@@ -9,5 +9,10 @@
       - -c
       - |
         pacman -Sy --noconfirm cockpit cockpit-machines cockpit-podman cockpit-packagekit cockpit-storaged udisks2
-        firewall-cmd --zone public --permanent --add-port=9090/tcp
+        firewall-offline-cmd --add-rich-rule='rule port port=9090 protocol=tcp accept limit value="20/m"'
         systemctl enable cockpit.socket
+
+- name: set cockpit to use oath
+  lineinfile:
+    path: /etc/pam.d/cockpit
+    line: auth	  required pam_oath.so usersfile=/etc/users.oath window=30 digits=6
