@@ -61,4 +61,9 @@
   - name: Remove cached install packages
     command:
       argv:
-        pacman -Scc --noconfirm
+        - /usr/bin/arch-chroot
+        - /mnt
+        - /bin/bash
+        - -c
+        - |
+          pacman -Scc --noconfirm
