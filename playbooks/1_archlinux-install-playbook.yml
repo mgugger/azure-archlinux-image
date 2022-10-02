@@ -57,3 +57,8 @@
   - include_tasks: set-auto-update.yml
 
   - include_tasks: other-optimizations.yml
+
+  - name: Remove cached install packages
+    command:
+      argv:
+        pacman -Scc --noconfirm
