@@ -89,3 +89,19 @@
           cloud_dir: /var/lib/cloud/
           templates_dir: /etc/cloud/templates/
         ssh_svcname: sshd
+
+      #cloud-config
+      device_aliases: {'ephemeral0': '/dev/disk/cloud/azure_resource'}
+      disk_setup:
+        ephemeral0:
+          table_type: gpt
+          layout: [66, [33,82]]
+          overwrite: true
+      fs_setup:
+        - device: ephemeral0.1
+          filesystem: ext4
+        - device: ephemeral0.2
+          filesystem: swap
+      mounts:
+        - ["ephemeral0.1", "/mnt"]
+        - ["ephemeral0.2", "none", "swap", "sw,nofail,x-systemd.requires=cloud-init.service", "0", "0"]
