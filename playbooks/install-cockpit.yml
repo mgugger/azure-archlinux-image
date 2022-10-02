@@ -1,6 +1,5 @@
 ---
 - name: Install cockpit and open firewalld port
-  ignore_errors: true
   command:
     argv:
       - /usr/bin/arch-chroot
@@ -9,12 +8,25 @@
       - -c
       - |
         pacman -Sy --noconfirm cockpit cockpit-podman cockpit-pcp cockpit-storaged udisks2 sscg nfs-utils # cockpit-packagekit cockpit-machines 
-        firewall-offline-cmd --zone public --add-rich-rule 'rule port port=9090 protocol=tcp accept limit value="100/m"'
+        firewall-offline-cmd --add-port=9090/tcp
         systemctl enable cockpit.socket
         systemctl enable pmlogger.service
 
 - name: set cockpit pam to use oath
-  when: cloud_init
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/cockpit/cockpit.conf
+    content: |
+      [WebService]
+      MaxStartups = 2
+      UrlRoot = /admin/
+
+      [Session]
+      IdleTimeout=60
+
+- name: set cockpit pam to use oath
   copy:
     owner: root
     group: root
