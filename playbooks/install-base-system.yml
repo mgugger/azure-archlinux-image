@@ -12,7 +12,15 @@
       SigLevel = Never
 
 - name: pacstrap base system with linux-hardened and selinux
-  command: pacstrap /mnt base-selinux linux-hardened linux-firmware
+  command: pacstrap /mnt base-selinux linux-hardened linux-firmware openssh-selinux 
+
+- name: Insert selinux repo
+  ansible.builtin.blockinfile:
+    path: /mnt/etc/pacman.conf
+    block: |
+      [selinux]
+      Server = https://github.com/archlinuxhardened/selinux/releases/download/ArchLinux-SELinux
+      SigLevel = Never
 
 - name: Run genfstab
   shell: 'genfstab -U /mnt > /mnt/etc/fstab'
@@ -59,7 +67,7 @@
         locale-gen
         echo -e "{{root_pw}}\n{{root_pw}}" | passwd
         passwd -l root
-        pacman -Sy --noconfirm btrfs-progs openssh-selinux nano python sudo wireguard-tools
+        pacman -Sy --noconfirm btrfs-progs nano python sudo wireguard-tools
         mkinitcpio -P || true
 
 - name: enable sshd
