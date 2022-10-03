@@ -56,6 +56,8 @@
 
   - include_tasks: set-auto-update.yml
 
+  - include_tasks: install-caddy.yml
+
   - include_tasks: other-optimizations.yml
 
   - name: Remove cached install packages
