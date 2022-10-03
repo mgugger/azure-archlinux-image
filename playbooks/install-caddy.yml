@@ -2,9 +2,9 @@
 - name: Install caddy
   command:
     argv:
-      pacman -Sy --noconfirm caddy
-      firewall-offline-cmd --zone=public --add-port=80/tcp
-      firewall-offline-cmd --zone=public --add-port=443/tcp
+      - pacman -Sy --noconfirm caddy
+      - firewall-offline-cmd --zone=public --add-port=80/tcp
+      - firewall-offline-cmd --zone=public --add-port=443/tcp
 
 - name: set caddyfile
   copy:
