@@ -46,7 +46,7 @@
       MODULES=(hv_storvsc hv_vmbus)
       BINARIES=()
       FILES=()
-      HOOKS=(base udev autodetect modconf block filesystems keyboard fsck)
+      HOOKS=(base systemd autodetect modconf block filesystems fsck)
       COMPRESSION="zstd"
 
 - name: generate root pw

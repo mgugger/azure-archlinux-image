@@ -9,9 +9,19 @@
       - /bin/bash
       - -c
       - |
-        pacman -Sy --noconfirm cloud-init cloud-guest-utils gptfdisk
+        pacman -Sy --noconfirm cloud-init cloud-utils gptfdisk udftools
         systemctl enable cloud-init.service
         systemctl enable cloud-final.service
+
+- name: set ntfs3 as default to read cloud-init
+  when: cloud_init
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/udev/rules.d/ntfs3_by_default.rules
+    content: |
+      SUBSYSTEM=="block", ENV{ID_FS_TYPE}=="ntfs", ENV{ID_FS_TYPE}="ntfs3"
 
 - name: set cloud-init cloud.cfg
   when: cloud_init
@@ -59,11 +69,9 @@
       cloud_final_modules:
       - package-update-upgrade-install
       - write-files-deferred
-      - ansible
       - mcollective
       - reset_rmc
       - refresh_rmc_and_interface
-      - rightscale_userdata
       - scripts-vendor
       - scripts-per-once
       - scripts-per-boot
@@ -73,6 +81,7 @@
       - keys-to-console
       - install-hotplug
       - phone-home
+      - wireguard
       - final-message
       - power-state-change
 
