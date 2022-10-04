@@ -7,6 +7,7 @@ param pubkeydata string
 param vm_admin_name string
 param local_public_ip string
 
+// NSG
 module nsg 'modules/nsg/nsg.bicep' = {
   name: 'nsgdmz'
   params: {
@@ -77,7 +78,24 @@ module vm 'modules/VM/virtualmachine.bicep' = {
   }
 }
 
-// Storage Account
+// Contributor Assignment for VM to create VM Image
+@description('This is the built-in Contributor role. See https://docs.microsoft.com/azure/role-based-access-control/built-in-roles#contributor')
+resource contributorRoleDefinition 'Microsoft.Authorization/roleDefinitions@2018-01-01-preview' existing = {
+  scope: subscription()
+  name: 'b24988ac-6180-42a0-ab88-20f7382dd24c'
+}
+
+resource roleAssignment 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
+  scope: resourceGroup()
+  name: guid(resourceGroup().id)
+  properties: {
+    roleDefinitionId: contributorRoleDefinition.id
+    principalId: vm.outputs.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Storage Account to store the VHD
 module sta 'modules/storage/storage_account.bicep' = {
   name: format('{0}sta', baseName)
   params: {
@@ -88,14 +106,3 @@ module sta 'modules/storage/storage_account.bicep' = {
     principalId: vm.outputs.principalId
   }
 }
-
-// Sample VM
-// module vm_from_vhd_sample 'modules/VM/virtualmachine_from_vhd.bicep' = {
-//   name: 'vm-vhd-sample'
-//   params: {
-//     staId: sta.outputs.id
-//     staName: sta.outputs.name
-//     location: location
-//     subnetId: vnet.outputs.vnetSubnets[0].id
-//   }
-// }
