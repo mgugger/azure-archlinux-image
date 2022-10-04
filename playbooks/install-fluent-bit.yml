@@ -1,0 +1,10 @@
+---
+- name: Install fluent-bit
+  command: 
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        sudo -u {{ username }} yay -Sy --noconfirm --aur fluent-bit

@@ -60,6 +60,8 @@
 
   - include_tasks: install-restic.yml
 
+  - include_tasks: install-fluent-bit.yml
+
   - include_tasks: other-optimizations.yml
 
   - name: Remove cached install packages
