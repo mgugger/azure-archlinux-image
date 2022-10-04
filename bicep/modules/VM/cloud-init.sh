@@ -27,3 +27,5 @@ runcmd:
   - sudo chmod 777 /usr/bin/azcopy
   - # Install Qrencode and oathtool
   - sudo apt install -y qrencode oathtool
+  - # Install az cli
+  - curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
