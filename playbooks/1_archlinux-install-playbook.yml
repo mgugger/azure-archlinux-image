@@ -58,6 +58,8 @@
 
   - include_tasks: install-caddy.yml
 
+  - include_tasks: install-restic.yml
+
   - include_tasks: other-optimizations.yml
 
   - name: Remove cached install packages
