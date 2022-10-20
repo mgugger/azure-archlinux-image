@@ -1,4 +1,53 @@
 ---
+- name: Install snap-pac to create btrfs snapshots after/before pacman updates
+  command: 
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        pacman -Sy --noconfirm snap-pac
+        snapper -c root create-config /
+        systemctl enable snapper-timeline.timer
+        systemctl enable snapper-cleanup.timer
+
+- name: set snapper TIMELINE_MIN_AGE
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/snapper/configs/root
+    regexp: ^TIMELINE_MIN_AGE(.*)$
+    line: TIMELINE_MIN_AGE="1800"
+
+- name: set snapper TIMELINE_LIMIT_HOURLY
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/snapper/configs/root
+    regexp: ^TIMELINE_LIMIT_HOURLY(.*)$
+    line: TIMELINE_LIMIT_HOURLY="5"
+
+- name: set snapper TIMELINE_LIMIT_DAILY
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/snapper/configs/root
+    regexp: ^TIMELINE_LIMIT_DAILY(.*)$
+    line: TIMELINE_LIMIT_DAILY="7"
+
+- name: set snapper TIMELINE_LIMIT_WEEKLY
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/snapper/configs/root
+    regexp: ^TIMELINE_LIMIT_WEEKLY(.*)$
+    line: TIMELINE_LIMIT_WEEKLY="0"
+
+- name: set snapper TIMELINE_LIMIT_MONTHLY
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/snapper/configs/root
+    regexp: ^TIMELINE_LIMIT_MONTHLY(.*)$
+    line: TIMELINE_LIMIT_MONTHLY="0"
+
+- name: set snapper TIMELINE_LIMIT_YEARLY
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/snapper/configs/root
+    regexp: ^TIMELINE_LIMIT_YEARLY(.*)$
+    line: TIMELINE_LIMIT_YEARLY="0"
+
 - name: Install pacman-auto-update
   command: 
     argv:
@@ -9,3 +58,44 @@
       - |
         sudo -u {{ username }} yay -Sy --noconfirm --aur pacman-auto-update || true
         systemctl enable pacman-auto-update.timer
+
+- name: set systemd reboot-sched.service
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system/reboot-sched.service
+    content: |
+      [Unit]
+      Description=Scheduled Reboot
+
+      [Service]
+      Type=simple
+      ExecStart=/usr/bin/systemctl --no-block reboot
+
+- name: set systemd reboot-sched.timer
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system/reboot-sched.timer
+    content: |
+      [Unit]
+      Description=Reboot Scheduling
+
+      [Timer]
+      OnCalendar=Mon,Thu *-*-* 01:30:00
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable reboot-sched.timer
+  command: 
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        systemctl daemon-reload
+        systemctl enable reboot-sched.timer
