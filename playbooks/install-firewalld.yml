@@ -12,3 +12,9 @@
         firewall-offline-cmd --remove-service=ssh
         firewall-offline-cmd --zone public --add-rich-rule 'rule service name="ssh" accept limit value="2/m"'
         systemctl enable firewalld
+
+- name: enable logdenied=all
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/firewalld/firewalld.conf
+    regexp: ^\#*LogDenied=(.*)$
+    line: LogDenied=all
