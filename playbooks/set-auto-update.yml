@@ -59,6 +59,24 @@
         sudo -u {{ username }} yay -Sy --noconfirm --aur pacman-auto-update
         systemctl enable pacman-auto-update.timer
 
+- name: Create /usr/lib/systemd/system/pacman-auto-update.service.d/ directory
+  ansible.builtin.file:
+    path: /usr/lib/systemd/system/pacman-auto-update.service.d/
+    state: directory
+
+- name: set pacman-auto-update systemd proxy settings
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /usr/lib/systemd/system/pacman-auto-update.service.d/http_proxy.conf
+    content: |
+      [Service]
+      Environment="http_proxy=http://127.0.0.1:8888"
+      Environment="https_proxy=http://127.0.0.1:8888"
+      Environment="HTTP_PROXY=http://127.0.0.1:8888"
+      Environment="HTTPS_PROXY=http://127.0.0.1:8888"
+
 - name: set systemd reboot-sched.service
   copy:
     owner: root

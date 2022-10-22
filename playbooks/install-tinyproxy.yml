@@ -26,7 +26,7 @@
       DefaultErrorFile "/usr/share/tinyproxy/default.html"
       StatFile "/usr/share/tinyproxy/stats.html"
       Syslog On
-      LogLevel Connect
+      LogLevel Notice
       PidFile "/run/tinyproxy/tinyproxy.pid"
       MaxClients 100
       Allow 127.0.0.1
