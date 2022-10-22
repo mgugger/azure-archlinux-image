@@ -43,10 +43,22 @@
     line: http_proxy=http://127.0.0.1:8888
     create: yes
 
+- name: Add HTTP_PROXY to environment
+  ansible.builtin.lineinfile:
+    path: /etc/environment
+    line: HTTP_PROXY=http://127.0.0.1:8888
+    create: yes
+
 - name: Add https_proxy to environment
   ansible.builtin.lineinfile:
     path: /etc/environment
     line: https_proxy=http://127.0.0.1:8888
+    create: yes
+
+- name: Add HTTPS_PROXY to environment
+  ansible.builtin.lineinfile:
+    path: /etc/environment
+    line: HTTPS_PROXY=http://127.0.0.1:8888
     create: yes
 
 - name: set firewall rules so that only tinyproxy and systemd-resolved are allowed to make calls to the internet

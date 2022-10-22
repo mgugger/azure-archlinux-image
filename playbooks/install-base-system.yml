@@ -102,7 +102,7 @@
 
 - name: Set wired networkd config
   copy: 
-    dest: /etc/systemd/network/20-wired.network
+    dest: /mnt/etc/systemd/network/20-wired.network
     force: yes
     content: |
       [Match]
@@ -110,3 +110,4 @@
 
       [Network]
       DHCP=yes
+      Domains=~.azure.net ~.azure.com ~.azurewebsites.net ~.windows.net ~.azuresynapse.net ~.azure-automation.net
