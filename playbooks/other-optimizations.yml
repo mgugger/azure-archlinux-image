@@ -51,7 +51,7 @@
     owner: root
     group: root
     force: yes
-    dest: /mnt/etc/sysctl.d/custom_settings.conf
+    dest: /mnt/usr/lib/tmpfiles.d/custom_settings.conf
     content: |
       w /sys/kernel/mm/transparent_hugepage/enabled - - - - never
       w /sys/kernel/mm/transparent_hugepage/defrag - - - - never

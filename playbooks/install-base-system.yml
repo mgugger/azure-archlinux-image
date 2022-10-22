@@ -110,4 +110,5 @@
 
       [Network]
       DHCP=yes
-      Domains=~.azure.net ~.azure.com ~.azurewebsites.net ~.windows.net ~.azuresynapse.net ~.azure-automation.net
+      Domains=~azure.net ~azure.com ~azurewebsites.net ~windows.net ~azuresynapse.net ~azure-automation.net
+      DNSDefaultRoute=false
