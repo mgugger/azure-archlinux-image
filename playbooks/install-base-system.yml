@@ -90,6 +90,16 @@
       - |
         systemctl enable systemd-networkd
 
+- name: enable systemd-timesyncd
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        systemctl enable systemd-timesyncd
+
 - name: Set wired networkd config
   copy: 
     dest: /etc/systemd/network/20-wired.network

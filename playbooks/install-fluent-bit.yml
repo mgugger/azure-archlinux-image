@@ -9,6 +9,13 @@
       - |
         sudo -u {{ username }} yay -Sy --noconfirm --aur fluent-bit
 
+- name: set fluent-bit http proxy var in systemd service
+  ansible.builtin.lineinfile:
+    path: /usr/lib/systemd/system/fluent-bit.service
+    line: Environment="HTTP_PROXY=http://127.0.0.1:8888"
+    insertafter: ^[Service]$
+    create: yes
+
 - name: set fluent-bit.conf
   copy:
     owner: root

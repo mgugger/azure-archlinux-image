@@ -64,6 +64,8 @@
 
   - include_tasks: other-optimizations.yml
 
+  - include_tasks: install-tinyproxy.yml
+
   - name: Remove cached install packages
     command:
       argv:

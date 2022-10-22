@@ -1,0 +1,66 @@
+---
+- name: Install and enable tinyproxy
+  ignore_errors: true
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        pacman -Sy --noconfirm tinyproxy
+        systemctl enable tinyproxy
+
+- name: set tinyproxy.conf
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/tinyproxy/tinyproxy.conf
+    content: |
+      User tinyproxy
+      Group tinyproxy
+      Port 8888
+      Listen 127.0.0.1
+      Timeout 600
+      DefaultErrorFile "/usr/share/tinyproxy/default.html"
+      StatFile "/usr/share/tinyproxy/stats.html"
+      Syslog On
+      LogLevel Connect
+      PidFile "/run/tinyproxy/tinyproxy.pid"
+      MaxClients 100
+      Allow 127.0.0.1
+      Allow ::1
+      ViaProxyName "tinyproxy"
+      #Filter "/etc/tinyproxy/filter"
+      #FilterType fnmatch
+      #FilterCaseSensitive On
+      #FilterDefaultDeny Yes
+
+- name: Add http_proxy to environment
+  ansible.builtin.lineinfile:
+    path: /etc/environment
+    line: http_proxy=http://127.0.0.1:8888
+    create: yes
+
+- name: Add https_proxy to environment
+  ansible.builtin.lineinfile:
+    path: /etc/environment
+    line: https_proxy=http://127.0.0.1:8888
+    create: yes
+
+- name: set firewall rules so that only tinyproxy and systemd-resolved are allowed to make calls to the internet
+  ignore_errors: true
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 0 -o eth0 -m state --state ESTABLISHED,RELATED -j ACCEPT
+        firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p tcp -m owner --uid-owner tinyproxy --dport 80 -j ACCEPT
+        firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p tcp -m owner --uid-owner tinyproxy --dport 443 -j ACCEPT
+        firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p tcp -m owner --uid-owner systemd-resolve -j ACCEPT
+        firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p udp -m owner --uid-owner systemd-timesync -j ACCEPT
+        firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 2 -o eth0 -j DROP
