@@ -56,7 +56,7 @@
       - /bin/bash
       - -c
       - |
-        sudo -u {{ username }} yay -Sy --noconfirm --aur pacman-auto-update || true
+        sudo -u {{ username }} yay -Sy --noconfirm --aur pacman-auto-update
         systemctl enable pacman-auto-update.timer
 
 - name: set systemd reboot-sched.service
@@ -99,3 +99,48 @@
       - |
         systemctl daemon-reload
         systemctl enable reboot-sched.timer
+
+- name: Create /etc/pacman.d/hooks directory
+  ansible.builtin.file:
+    path: /etc/pacman.d/hooks
+    state: directory
+
+- name: pacman hook to disallow shutdown or reboot while pacman is running
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /etc/pacman.d/hooks/00-prevent-interruption-pre.hook
+    content: |
+      [Trigger]
+      Operation = Install
+      Operation = Upgrade
+      Operation = Remove
+      Type = Package
+      Target = *
+
+      [Action]
+      Description = Masking systemd targets to prevent interruption...
+      When = PreTransaction
+      Exec = /usr/bin/systemctl --runtime mask halt.target poweroff.target reboot.target kexec.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target sleep.target
+      Depends = systemd
+
+- name: pacman hook to allow shutdown or reboot after pacman finished
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /etc/pacman.d/hooks/00-prevent-interruption-pre.hook
+    content: |
+      [Trigger]
+      Operation = Install
+      Operation = Upgrade
+      Operation = Remove
+      Type = Package
+      Target = *
+
+      [Action]
+      Description = Unmasking systemd targets to reenable power management...
+      When = PostTransaction
+      Exec = /usr/bin/systemctl --runtime unmask halt.target poweroff.target reboot.target kexec.target suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target sleep.target
+      Depends = systemd
