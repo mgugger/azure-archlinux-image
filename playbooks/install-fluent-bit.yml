@@ -49,39 +49,39 @@
         # storage.checksum off
         # storage.backlog.mem_limit 5M
 
-    [INPUT]
-        name systemd
-        tag  *
+      [INPUT]
+          name systemd
+          tag  *
 
-    [FILTER]
-        Name     grep
-        Match    *
-        Exclude  _SYSTEMD_UNIT fluent-bit\.service|waagent\.service|init\.scope|pmlogger_farm_check\.service
-    
-    [FILTER]
-        Name record_modifier
-        Match *
-        Remove_Key _COMM
-        Remove_Key _EXE
-        Remove_Key _SYSTEMD_CGROUP
-        Remove_Key _SYSTEMD_INVOCATION_ID
-        Remove_Key _CMDLINE
-        Remove_Key _PID
-        Remove_Key _MACHINE_ID
-        Remove_Key _SYSTEMD_SLIDE
-        Remove_Key _BOOT_ID
-        Remove_Key _AUDIT_FIELD_EXE
-        Remove_Key _AUDIT_FIELD_TERMINAL
-        Remove_Key JOB_TYPE
-        Remove_Key CODE_FUNC
-        Remove_Key _CAP_EFFECTIVE
-        Remove_Key _SELINUX_CONTEXT
-        Remove_Key TID
-        Remove_Key _AUDIT_LOGINUID
-        Remove_Key sequence_d
+      [FILTER]
+          Name     grep
+          Match    *
+          Exclude  _SYSTEMD_UNIT fluent-bit\.service|waagent\.service|init\.scope|pmlogger_farm_check\.service
+      
+      [FILTER]
+          Name record_modifier
+          Match *
+          Remove_Key _COMM
+          Remove_Key _EXE
+          Remove_Key _SYSTEMD_CGROUP
+          Remove_Key _SYSTEMD_INVOCATION_ID
+          Remove_Key _CMDLINE
+          Remove_Key _PID
+          Remove_Key _MACHINE_ID
+          Remove_Key _SYSTEMD_SLIDE
+          Remove_Key _BOOT_ID
+          Remove_Key _AUDIT_FIELD_EXE
+          Remove_Key _AUDIT_FIELD_TERMINAL
+          Remove_Key JOB_TYPE
+          Remove_Key CODE_FUNC
+          Remove_Key _CAP_EFFECTIVE
+          Remove_Key _SELINUX_CONTEXT
+          Remove_Key TID
+          Remove_Key _AUDIT_LOGINUID
+          Remove_Key sequence_d
 
-    [OUTPUT]
-        Name        azure
-        Match       *
-        Customer_ID <customerid>
-        Shared_Key  <sharedkey>
+      [OUTPUT]
+          Name        azure
+          Match       *
+          Customer_ID <customerid>
+          Shared_Key  <sharedkey>
