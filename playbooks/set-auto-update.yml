@@ -8,6 +8,7 @@
       - -c
       - |
         pacman -Sy --noconfirm snap-pac
+        sudo -u {{ username }} yay -Sy --noconfirm --aur snap-pac-grub
         snapper -c root create-config /
         systemctl enable snapper-timeline.timer
         systemctl enable snapper-cleanup.timer
@@ -22,7 +23,7 @@
   ansible.builtin.lineinfile:
     path: /mnt/etc/snapper/configs/root
     regexp: ^TIMELINE_LIMIT_HOURLY(.*)$
-    line: TIMELINE_LIMIT_HOURLY="5"
+    line: TIMELINE_LIMIT_HOURLY="3"
 
 - name: set snapper TIMELINE_LIMIT_DAILY
   ansible.builtin.lineinfile:

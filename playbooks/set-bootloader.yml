@@ -25,12 +25,25 @@
         pacman -Sy --noconfirm grub
         sed -i /GRUB_DISABLE_OS_PROBER/d  /etc/default/grub
         echo "GRUB_DISABLE_OS_PROBER=true" >> /etc/default/grub
+        
         sed -i /GRUB_DISABLE_RECOVERY/d  /etc/default/grub
         echo "GRUB_DISABLE_RECOVERY=true" >> /etc/default/grub
+        
         sed -i /GRUB_TIMEOUT/d  /etc/default/grub
-        echo "GRUB_TIMEOUT=0" >> /etc/default/grub
+        echo "GRUB_TIMEOUT=5" >> /etc/default/grub
+        
         sed -i /GRUB_CMDLINE_LINUX_DEFAULT/d  /etc/default/grub
-        echo 'GRUB_CMDLINE_LINUX_DEFAULT="quiet splash lsm=landlock,lockdown,yama,integrity,selinux,bpf"' >> /etc/default/grub
+        echo 'GRUB_CMDLINE_LINUX_DEFAULT="quiet console=tty0 console=ttyS0,115200 lsm=landlock,lockdown,yama,integrity,selinux,bpf"' >> /etc/default/grub
+        
+        sed -i /GRUB_TERMINAL_INPUT/d  /etc/default/grub
+        echo 'GRUB_TERMINAL_INPUT="serial console"' >> /etc/default/grub
+
+        sed -i /GRUB_TERMINAL_OUTPUT/d  /etc/default/grub
+        echo 'GRUB_TERMINAL_OUTPUT="gfxterm serial"' >> /etc/default/grub
+
+        sed -i /GRUB_SERIAL_COMMAND/d  /etc/default/grub
+        echo 'GRUB_SERIAL_COMMAND="serial --unit=0 --speed=115200"' >> /etc/default/grub
+        
         grub-install {{ install_device_name }}
         grub-mkconfig -o /boot/grub/grub.cfg
 
