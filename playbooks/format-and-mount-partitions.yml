@@ -13,31 +13,87 @@
     src: "{{ install_device_name }}{{ root_partition_number }}"
     state: mounted
     fstype: btrfs
-    opts: compress-force=zstd,noatime,discard=async,autodefrag
-
-- name: Create /var directory
-  ansible.builtin.file:
-    path: /mnt/var
-    state: directory
-
-- name: Create /var/cache directory
-  ansible.builtin.file:
-    path: /mnt/var/cache
-    state: directory
-
-- name: Create /var/cache/pacman directory
-  ansible.builtin.file:
-    path: /mnt/var/cache/pacman
-    state: directory
+    opts: compress=zstd:6,noatime,discard=async,autodefrag
 
 - name: create btrfs subvolumes
   command:
     argv:
-      - btrfs subvol create /mnt/var/cache/pacman/pkg
-      - btrfs subvol create /mnt/var/log
-      - btrfs subvol create /mnt/var/abs
-      - btrfs subvol create /mnt/var/tmp
-      - btrfs subvol create /mnt/srv
+      - btrfs su cr /mnt/@
+      - btrfs su cr /mnt/@home
+      - btrfs su cr /mnt/@root
+      - btrfs su cr /mnt/@srv
+      - btrfs su cr /mnt/@log
+      - btrfs su cr /mnt/@cache
+      - btrfs su cr /mnt/@tmp
+      - umount /mnt
+
+- name: Mount subvol @ as root partition
+  when: not root_mounted
+  mount:
+    path: "/mnt"
+    src: "{{ install_device_name }}{{ root_partition_number }}"
+    state: mounted
+    fstype: btrfs
+    opts: defaults,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@
+
+- name: create folders for btrfs subvolumes
+  command:
+    argv:
+      - mkdir -p /mnt/{home,root,srv,var/log,var/cache,tmp}
+
+- name: Mount home subvol partition
+  when: not root_mounted
+  mount:
+    path: "/mnt/home"
+    src: "{{ install_device_name }}{{ root_partition_number }}"
+    state: mounted
+    fstype: btrfs
+    opts: defaults,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@home
+
+- name: Mount root subvol partition
+  when: not root_mounted
+  mount:
+    path: "/mnt/root"
+    src: "{{ install_device_name }}{{ root_partition_number }}"
+    state: mounted
+    fstype: btrfs
+    opts: defaults,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@root
+
+- name: Mount srv subvol partition
+  when: not root_mounted
+  mount:
+    path: "/mnt/srv"
+    src: "{{ install_device_name }}{{ root_partition_number }}"
+    state: mounted
+    fstype: btrfs
+    opts: defaults,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@srv
+
+- name: Mount /var/log subvol partition
+  when: not root_mounted
+  mount:
+    path: "/mnt/var/log"
+    src: "{{ install_device_name }}{{ root_partition_number }}"
+    state: mounted
+    fstype: btrfs
+    opts: defaults,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@log
+
+- name: Mount /var/cache subvol partition
+  when: not root_mounted
+  mount:
+    path: "/mnt/var/cache"
+    src: "{{ install_device_name }}{{ root_partition_number }}"
+    state: mounted
+    fstype: btrfs
+    opts: defaults,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@cache
+
+- name: Mount /tmp subvol partition
+  when: not root_mounted
+  mount:
+    path: "/mnt/tmp"
+    src: "{{ install_device_name }}{{ root_partition_number }}"
+    state: mounted
+    fstype: btrfs
+    opts: defaults,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@tmp
 
 - name: Create a directory if it does not exist
   when: bootloader != "bios"
