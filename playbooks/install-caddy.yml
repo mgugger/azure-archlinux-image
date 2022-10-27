@@ -29,7 +29,7 @@
 
 - name: Create /usr/lib/systemd/system/caddy.service.d directory
   ansible.builtin.file:
-    path: /usr/lib/systemd/system/caddy.service.d
+    path: /mnt/usr/lib/systemd/system/caddy.service.d
     state: directory
 
 - name: set caddy systemd proxy settings
@@ -37,7 +37,7 @@
     owner: root
     group: root
     force: yes
-    dest: /usr/lib/systemd/system/caddy.service.d/http_proxy.conf
+    dest: /mnt/usr/lib/systemd/system/caddy.service.d/http_proxy.conf
     content: |
       [Service]
       Environment="http_proxy=http://127.0.0.1:8888"
