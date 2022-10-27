@@ -77,3 +77,5 @@
 
   # Install auto update and snapper latest to avoid unneeded snapshots in the image
   - include_tasks: set-auto-update.yml
+
+  - include_tasks: set-proxy-env.yml

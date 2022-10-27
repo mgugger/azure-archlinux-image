@@ -1,0 +1,36 @@
+---
+- name: Add http_proxy to environment
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/environment
+    line: http_proxy=http://127.0.0.1:8888
+    create: yes
+
+- name: Add HTTP_PROXY to environment
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/environment
+    line: HTTP_PROXY=http://127.0.0.1:8888
+    create: yes
+
+- name: Add https_proxy to environment
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/environment
+    line: https_proxy=http://127.0.0.1:8888
+    create: yes
+
+- name: Add HTTPS_PROXY to environment
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/environment
+    line: HTTPS_PROXY=http://127.0.0.1:8888
+    create: yes
+
+- name: Add no_proxy to environment
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/environment
+    line: no_proxy=localhost,127.0.0.1
+    create: yes
+
+- name: Add NO_PROXY to environment
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/environment
+    line: NO_PROXY=localhost,127.0.0.1
+    create: yes
