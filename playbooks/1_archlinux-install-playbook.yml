@@ -64,7 +64,7 @@
 
   - include_tasks: install-tinyproxy.yml
 
-  - name: Remove cached install packages
+  - name: Remove cached installed and orphaned packages
     command:
       argv:
         - /usr/bin/arch-chroot
@@ -73,6 +73,7 @@
         - -c
         - |
           pacman -Scc --noconfirm
+          pacman -Rsn `pacman -Qqtd`
 
   # Install auto update and snapper latest to avoid unneeded snapshots in the image
   - include_tasks: set-auto-update.yml
