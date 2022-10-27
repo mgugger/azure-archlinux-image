@@ -1,6 +1,5 @@
 ---
 - name: create refind bootloader
-  ignore_errors: true
   when: bootloader != "bios"
   command:
     argv:
@@ -13,7 +12,6 @@
         refind-install
 
 - name: create grub bootloader
-  ignore_errors: true
   when: bootloader == "bios"
   command:
     argv:

@@ -1,6 +1,5 @@
 ---
 - name: Install restic
-  ignore_errors: true
   command:
     argv:
       - /usr/bin/arch-chroot

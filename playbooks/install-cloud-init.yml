@@ -1,6 +1,5 @@
 ---
 - name: Install cloud-init
-  ignore_errors: true
   when: cloud_init
   command:
     argv:

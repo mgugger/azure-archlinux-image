@@ -1,6 +1,5 @@
 ---
 - name: Install and enable tinyproxy
-  ignore_errors: true
   command:
     argv:
       - /usr/bin/arch-chroot
@@ -38,7 +37,6 @@
       #FilterDefaultDeny Yes
 
 - name: set firewall rules so that only tinyproxy and systemd-resolved are allowed to make calls to the internet
-  ignore_errors: true
   command:
     argv:
       - /usr/bin/arch-chroot
