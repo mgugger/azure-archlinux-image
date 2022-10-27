@@ -1,0 +1,10 @@
+---
+- name: compile iproute2-selinux -> https://github.com/archlinuxhardened/selinux/issues/110
+  command: 
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        sudo -u {{ username }} yay -Sy --noconfirm --aur iproute2-selinux
