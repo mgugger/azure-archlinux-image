@@ -10,7 +10,7 @@
         pacman -Sy --noconfirm firewalld nftables
         firewall-offline-cmd --remove-service=ssh
         firewall-offline-cmd --zone public --add-rich-rule 'rule service name="ssh" accept limit value="2/m"'
-        systemctl enable firewalld
+        # Enable firewalld in cloud-init: systemctl enable firewalld
 
 - name: enable logdenied=all
   ansible.builtin.lineinfile:

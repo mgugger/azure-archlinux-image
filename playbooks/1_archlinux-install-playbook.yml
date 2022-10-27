@@ -65,6 +65,7 @@
   - include_tasks: install-tinyproxy.yml
 
   - name: Remove cached installed and orphaned packages
+    ignore_errors: true
     command:
       argv:
         - /usr/bin/arch-chroot
