@@ -22,6 +22,7 @@
             "iso_url": "https://mirror.puzzle.ch/archlinux/iso/2022.09.03/archlinux-x86_64.iso",
             "iso_checksum": "sha1:778b6399dff5955ef0666d4962da2a9c291b59cb",
             "headless": true,
+            "cpus": 2,
             "disk_cache": "unsafe",
             "disk_discard": "unmap",
             "disk_compression": true,
