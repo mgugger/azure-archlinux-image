@@ -99,6 +99,16 @@
       - |
         systemctl enable systemd-timesyncd
 
+- name: enable auditd
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        systemctl enable auditd
+
 - name: Set wired networkd config
   copy: 
     dest: /mnt/etc/systemd/network/20-wired.network

@@ -49,7 +49,5 @@
         firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p tcp -m owner --uid-owner tinyproxy --dport 443 -j ACCEPT
         firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p tcp -m owner --uid-owner systemd-resolve -j ACCEPT
         firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p udp -m owner --uid-owner systemd-timesync -j ACCEPT
-        firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p udp -m owner --uid-owner root --dport 80 -j ACCEPT
-        firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p udp -m owner --uid-owner root --dport 443 -j ACCEPT
         # Drop all other outgoing traffic
         firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 2 -o eth0 -j DROP
