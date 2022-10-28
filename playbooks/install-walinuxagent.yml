@@ -9,3 +9,4 @@
       - |
         sudo -u {{ username }} yay -Sy --noconfirm --aur walinuxagent
         systemctl enable waagent
+        firewall-offline-cmd --zone=public --add-source-port=80/tcp
