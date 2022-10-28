@@ -11,7 +11,7 @@
         firewall-offline-cmd --remove-service=ssh
         firewall-offline-cmd --zone public --add-rich-rule 'rule service name="ssh" accept limit value="2/m"'
         # Enable firewalld in cloud-init: systemctl enable firewalld
-        systemctl disable firewalld
+        systemctl enable firewalld
 
 - name: enable logdenied=all
   ansible.builtin.lineinfile:
