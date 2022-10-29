@@ -10,6 +10,9 @@
         pacman -Sy --noconfirm firewalld nftables
         firewall-offline-cmd --remove-service=ssh
         firewall-offline-cmd --zone public --add-rich-rule 'rule service name="ssh" accept limit value="2/m"'
+        # Enable wireguard
+        firewall-cmd --permanent --zone=public --add-service=wireguard
+        firewall-cmd --permanent --zone=public --add-masquerade
         # Enable firewalld in cloud-init: systemctl enable firewalld
         systemctl disable firewalld
 
