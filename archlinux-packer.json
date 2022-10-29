@@ -16,7 +16,7 @@
                 ]
             ],
             "output_directory": "./packer_output/qemu",
-            "disk_size": "2500M",
+            "disk_size": "3000M",
             "format": "raw",
             "accelerator": "kvm",
             "iso_url": "https://mirror.puzzle.ch/archlinux/iso/2022.09.03/archlinux-x86_64.iso",
