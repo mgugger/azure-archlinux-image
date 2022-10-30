@@ -15,6 +15,23 @@
     path: /mnt/usr/lib/systemd/system/pacman-auto-update.service.d/
     state: directory
 
+- name: Create /usr/lib/systemd/system/pacman-auto-update.timer.d/ directory
+  ansible.builtin.file:
+    path: /mnt/usr/lib/systemd/system/pacman-auto-update.timer.d/
+    state: directory
+
+- name: run auto update once per day
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/usr/lib/systemd/system/pacman-auto-update.timer.d/daily.conf
+    content: |
+      [Timer]
+      OnBootSec=
+      OnUnitInactiveSec=
+      OnUnitActiveSec=1d
+
 - name: set pacman-auto-update systemd proxy settings
   copy:
     owner: root
