@@ -28,9 +28,8 @@
     dest: /mnt/usr/lib/systemd/system/pacman-auto-update.timer.d/daily.conf
     content: |
       [Timer]
-      OnBootSec=
-      OnUnitInactiveSec=
-      OnUnitActiveSec=1d
+      OnBootSec=2h
+      OnUnitInactiveSec=1
 
 - name: set pacman-auto-update systemd proxy settings
   copy:
