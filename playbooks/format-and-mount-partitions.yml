@@ -35,7 +35,7 @@
     opts: defaults,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@
 
 - name: create folders for btrfs subvolumes
-  command: mkdir -p /mnt/{home,root,srv,var/log,var/cache,tmp}
+  command: mkdir -p /mnt/{home,root,srv,var/log,var/cache,tmp,/var/tmp}
 
 - name: Mount home subvol partition
   mount:
@@ -83,7 +83,15 @@
     src: "{{ install_device_name }}{{ root_partition_number }}"
     state: mounted
     fstype: btrfs
-    opts: defaults,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@tmp
+    opts: defaults,compress=zstd:6,noatime,nodev,nosuid,noexec,discard=async,autodefrag,subvol=@tmp
+    
+- name: Mount /var/tmp to /tmp
+  mount:
+    path: "/mnt/var/tmp"
+    src: "/mnt/tmp"
+    state: mounted
+    fstype: btrfs
+    opts: rw,noexec,nosuid,nodev,bind
 
 - name: Create a directory if it does not exist
   when: bootloader != "bios"
