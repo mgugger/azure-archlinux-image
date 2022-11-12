@@ -79,6 +79,26 @@
       - |
         systemctl enable sshd
 
+- name: enable btrfs scrub for root
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        systemctl enable btrfs-scrub@-.timer
+        
+- name: enable btrfs scrub for home
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        sudo systemctl enable btrfs-scrub@home.timer
+
 - name: enable systemd-networkd
   command:
     argv:
