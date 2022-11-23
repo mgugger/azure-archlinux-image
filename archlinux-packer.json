@@ -12,7 +12,9 @@
             "qemuargs": [
                 [
                     "-m",
-                    "2048M"
+                    "2048M",
+                    "-boot",
+                    "menu=on,splash-time=10000"
                 ]
             ],
             "output_directory": "./packer_output/qemu",
@@ -22,12 +24,13 @@
             "iso_url": "https://mirror.puzzle.ch/archlinux/iso/2022.09.03/archlinux-x86_64.iso",
             "iso_checksum": "sha1:778b6399dff5955ef0666d4962da2a9c291b59cb",
             "headless": true,
+            "firmware": "/usr/share/OVMF/OVMF_CODE.fd",
             "cpus": 2,
             "disk_cache": "unsafe",
             "disk_discard": "unmap",
             "disk_compression": true,
             "http_directory": "http",
-            "boot_wait": "5s",
+            "boot_wait": "20s",
             "boot_command": [
                 "<enter><wait60><enter>",
                 "curl -sfSLO http://{{ .HTTPIP }}:{{ .HTTPPort }}/packer.sh<enter><wait>",
