@@ -12,10 +12,9 @@
             "qemuargs": [
                 [
                     "-m",
-                    "2048M",
-                    "-boot",
-                    "menu=on,splash-time=10000"
-                ]
+                    "2048M"
+                ],
+                [ "-boot",  "menu=on,splash-time=10000" ]
             ],
             "output_directory": "./packer_output/qemu",
             "disk_size": "4000M",
