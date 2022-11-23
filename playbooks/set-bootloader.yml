@@ -29,7 +29,7 @@
         sed -i /GRUB_SERIAL_COMMAND/d  /etc/default/grub
         echo 'GRUB_SERIAL_COMMAND="serial --unit=0 --speed=115200"' >> /etc/default/grub
         
-        grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=GRUB
+        grub-install --target=x86_64-efi --efi-directory=/efi --bootloader-id=GRUB
         grub-mkconfig -o /boot/grub/grub.cfg
 
 - name: get UUID
