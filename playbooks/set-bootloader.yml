@@ -1,18 +1,5 @@
 ---
-- name: create refind bootloader
-  when: bootloader != "bios"
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
-        pacman -Sy --noconfirm efibootmgr refind 
-        refind-install
-
 - name: create grub bootloader
-  when: bootloader == "bios"
   command:
     argv:
       - /usr/bin/arch-chroot
@@ -48,15 +35,3 @@
 - name: get UUID
   shell: "blkid | grep {{ install_device_name }}2 | awk -F : '{print \"blkid -s UUID -o value \"$1}' |sh"
   register: UUID_value
-
-- name: set refind setting because incorrect settings due to arch-chroot 
-  when: bootloader != "bios"
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /mnt/boot/refind_linux.conf
-    content: |
-      "Boot using default options"     "root=UUID={{ UUID_value['stdout'] }} rw add_efi_memmap initrd=boot\initramfs-linux.img"
-      "Boot using fallback initramfs"  "root=UUID={{ UUID_value['stdout'] }} rw add_efi_memmap initrd=boot\initramfs-linux-fallback.img"
-      "Boot to terminal"               "root=UUID={{ UUID_value['stdout'] }} rw add_efi_memmap initrd=boot\initramfs-linux.img systemd.unit=multi-user.target"

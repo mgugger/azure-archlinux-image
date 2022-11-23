@@ -94,13 +94,11 @@
     opts: rw,noexec,nosuid,nodev,bind
 
 - name: Create a directory if it does not exist
-  when: bootloader != "bios"
   ansible.builtin.file:
     path: /mnt/efi
     state: directory
 
 - name: Mount boot partition
-  when: not boot_mounted and bootloader != "bios"
   mount:
     path: "/mnt/efi"
     src: "{{ install_device_name }}1"

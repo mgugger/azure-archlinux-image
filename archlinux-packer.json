@@ -16,7 +16,7 @@
                 ]
             ],
             "output_directory": "./packer_output/qemu",
-            "disk_size": "3000M",
+            "disk_size": "4000M",
             "format": "raw",
             "accelerator": "kvm",
             "iso_url": "https://mirror.puzzle.ch/archlinux/iso/2022.09.03/archlinux-x86_64.iso",
@@ -56,7 +56,7 @@
                 "azcopy login --identity",
                 "azcopy copy ./packer_output/archlinux.vhd https://{{user `storage_account_name`}}.blob.core.windows.net/archlinux/",
                 "az login --identity",
-                "az image create --source https://{{user `storage_account_name`}}.blob.core.windows.net/archlinux/archlinux.vhd --name archlinux -g vm-imagebuilder --os-type linux",
+                "az image create --source https://{{user `storage_account_name`}}.blob.core.windows.net/archlinux/archlinux.vhd --name archlinux -g vm-imagebuilder --os-type linux --hyper-v-generation V2 --os-disk-caching ReadOnly",
                 "echo \"random seed is: {{user `random_seed_for_oath` }} and base32 $(oathtool -v --totp -d 6 {{user `random_seed_for_oath` }} | grep '^Base32 secret:' | sed 's/^.*: //')\"",
                 "echo \"QR Code for oath otp is\"",
                 "qrencode -t UTF8 \"otpauth://totp/Archlinux:{{user `username` }}@archlinux?secret=$(oathtool -v --totp -d 6 {{user `random_seed_for_oath` }} | grep \"^Base32 secret:\" | cut -d \" \" -f3)&issuer={{user `username`}}\"",
