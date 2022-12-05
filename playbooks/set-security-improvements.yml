@@ -1,0 +1,137 @@
+---
+### Taken from https://github.com/MicrosoftDocs/azure-docs/blob/main/articles/governance/policy/samples/guest-configuration-baseline-linux.md
+- name: block usb_storage module
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/modprobe.d/modprobe.conf
+    line: blacklist usb_storage
+    create: yes
+
+- name: block hfs module
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/modprobe.d/modprobe.conf
+    line: blacklist hfs
+    create: yes
+
+- name: block dccp module
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/modprobe.d/modprobe.conf
+    line: blacklist dccp
+    create: yes
+
+- name: block sctp module
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/modprobe.d/modprobe.conf
+    line: blacklist sctp
+    create: yes
+
+- name: block hfsplus module
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/modprobe.d/modprobe.conf
+    line: blacklist hfsplus
+    create: yes
+
+- name: block rds module
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/modprobe.d/modprobe.conf
+    line: blacklist rds
+    create: yes
+
+- name: block rds module
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/modprobe.d/modprobe.conf
+    line: blacklist rds
+    create: yes
+
+- name: block tipc module
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/modprobe.d/modprobe.conf
+    line: blacklist tipc
+    create: yes
+
+- name: block jffs2 module
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/modprobe.d/modprobe.conf
+    line: blacklist jffs2
+    create: yes
+
+- name: Ensure core dumps are restricted
+  ansible.builtin.lineinfile:
+    path: /etc/security/limits.conf
+    line: hard core 0
+    create: yes
+
+- name: Ensure core dumps are restricted
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/sysctl.d/security_settings.conf
+    content: |
+      fs.suid_dumpable = 0
+      kernel.randomize_va_space = 2
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv6.conf.all.accept_redirects = 0
+      net.ipv6.conf.default.accept_redirects = 0
+      net.ipv4.conf.all.secure_redirects = 0
+      net.ipv4.conf.default.secure_redirects = 0
+      net.ipv4.conf.all.accept_source_route = 0
+      net.ipv6.conf.all.accept_source_route = 0
+      net.ipv4.conf.default.accept_source_route = 0
+      net.ipv6.conf.default.accept_source_route = 0
+      net.ipv4.icmp_ignore_bogus_error_responses = 1
+      net.ipv4.icmp_echo_ignore_broadcasts = 1
+      net.ipv4.conf.all.log_martians = 1
+      net.ipv4.conf.default.rp_filter = 1
+      net.ipv4.conf.all.rp_filter = 1
+      net.ipv4.tcp_syncookies = 1
+
+- name: sshd ignorerhosts yes
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^IgnoreRhosts(.*)$
+    line: IgnoreRhosts yes
+
+- name: sshd MaxAuthTries 4
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^MaxAuthTries(.*)$
+    line: MaxAuthTries 4
+
+- name: sshd RhostsRSAAuthentication no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^RhostsRSAAuthentication(.*)$
+    line: RhostsRSAAuthentication no
+
+- name: sshd HostbasedAuthentication no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^HostbasedAuthentication(.*)$
+    line: HostbasedAuthentication no
+
+- name: sshd PermitRootLogin no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^PermitRootLogin(.*)$
+    line: PermitRootLogin no
+
+- name: sshd PermitEmptyPasswords no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^PermitEmptyPasswords(.*)$
+    line: PermitEmptyPasswords no
+
+- name: sshd ClientAliveCountMax 0
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^ClientAliveCountMax(.*)$
+    line: ClientAliveCountMax 0
+
+- name: sshd LoginGraceTime 1m
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^ClientAliveCountMax(.*)$
+    line: LoginGraceTime 1m

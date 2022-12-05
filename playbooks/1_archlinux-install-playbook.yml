@@ -59,6 +59,8 @@
 
   - include_tasks: install-tinyproxy.yml
 
+  - include_tasks: set-security-improvements.yml
+
   - name: Remove cached installed and orphaned packages
     ignore_errors: true
     command:

@@ -127,7 +127,7 @@
       - /bin/bash
       - -c
       - |
-        systemctl disable auditd
+        systemctl enable auditd
 
 - name: Set wired networkd config
   copy: 

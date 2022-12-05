@@ -43,7 +43,7 @@
     src: "{{ install_device_name }}{{ root_partition_number }}"
     state: mounted
     fstype: btrfs
-    opts: defaults,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@home
+    opts: defaults,nodev,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@home
 
 - name: Mount root subvol partition
   mount:
