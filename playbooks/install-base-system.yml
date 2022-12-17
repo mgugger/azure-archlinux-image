@@ -31,7 +31,7 @@
   register: file_content
 
 - name: "Fail if the fstab does not contain the UUIDs"
-  failed_when: file_content.stdout.find('UUID') != -1
+  failed_when: file_content.stdout.find('UUID') == -1
   debug: 
     msg: "{{ file_content.stdout }}"
 
