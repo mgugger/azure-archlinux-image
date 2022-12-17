@@ -25,6 +25,17 @@
 - name: Run genfstab
   shell: 'genfstab -U /mnt > /mnt/etc/fstab'
 
+- name: verify vda does not exist in fstab
+  lineinfile: 
+    dest: /mnt/etc/fstab
+    line: "vda"
+  check_mode: yes
+  register: fstab_file
+  failed_when: fstab_file.changed
+
+- debug:
+    msg: "{{ fstab_file }}"
+
 - name: Set hostname to archlinux
   copy: 
     dest: /mnt/etc/hostname
@@ -46,12 +57,12 @@
       MODULES=(hv_storvsc hv_vmbus)
       BINARIES=()
       FILES=()
-      HOOKS=(base systemd autodetect modconf block filesystems fsck)
+      HOOKS=(base systemd autodetect modconf block filesystems fsck btrfs)
       COMPRESSION="zstd"
 
 - name: generate root pw
   set_fact:
-    root_pw: "{{ lookup('password', '/dev/null chars=ascii_letters,digit length=32') | lower }}"
+    root_pw: "{{ lookup('password', '/dev/null chars=ascii_letters,digit length=64') | lower }}"
 
 - name: Configure System
   command:

@@ -11,9 +11,6 @@
         sed -i /GRUB_DISABLE_OS_PROBER/d  /etc/default/grub
         echo "GRUB_DISABLE_OS_PROBER=true" >> /etc/default/grub
         
-        sed -i /GRUB_DISABLE_RECOVERY/d  /etc/default/grub
-        echo "GRUB_DISABLE_RECOVERY=true" >> /etc/default/grub
-        
         sed -i /GRUB_TIMEOUT/d  /etc/default/grub
         echo "GRUB_TIMEOUT=5" >> /etc/default/grub
         
@@ -32,4 +29,7 @@
         grub-install --target=x86_64-efi --efi-directory=/efi --bootloader-id=GRUB --removable
         grub-mkconfig -o /boot/grub/grub.cfg
 
+- name: get UUID
+  shell: "blkid | grep {{ install_device_name }}2 | awk -F : '{print \"blkid -s UUID -o value \"$1}' |sh"
+  register: UUID_value
 #TODO: Set bootloader password for grub
