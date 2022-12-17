@@ -30,8 +30,8 @@
     cat /mnt/etc/fstab
   register: file_content
 
-- name: "Print the fstab content to console"
-  failed_when: file_content.stdout.find('vda') != -1
+- name: "Fail if the fstab does not contain the UUIDs"
+  failed_when: file_content.stdout.find('UUID') != -1
   debug: 
     msg: "{{ file_content.stdout }}"
 
