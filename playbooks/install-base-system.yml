@@ -34,7 +34,15 @@
 
 - debug:
     msg: "{{ fstab_file }}"
-  failed_when: fstab_file.changed
+
+- name: "Read file content"
+  shell: |
+    cat /mnt/etc/fstab
+  register: file_content
+
+- name: "Print the fstab content to console"
+  debug:
+    msg: "{{ file_content.stdout }}"
 
 - name: Set hostname to archlinux
   copy: 
