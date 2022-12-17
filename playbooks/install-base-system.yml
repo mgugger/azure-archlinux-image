@@ -31,10 +31,10 @@
     line: "vda"
   check_mode: yes
   register: fstab_file
-  failed_when: fstab_file.changed
 
 - debug:
     msg: "{{ fstab_file }}"
+  failed_when: fstab_file.changed
 
 - name: Set hostname to archlinux
   copy: 
