@@ -32,10 +32,7 @@
   check_mode: yes
   register: fstab_file
 
-- debug:
-    msg: "{{ fstab_file }}"
-
-- name: "Read file content"
+- name: "Read a file content"
   shell: |
     cat /mnt/etc/fstab
   register: file_content
@@ -43,6 +40,10 @@
 - name: "Print the fstab content to console"
   debug:
     msg: "{{ file_content.stdout }}"
+
+- debug:
+    msg: "{{ fstab_file }}"
+  failed_when: fstab_file.changed
 
 - name: Set hostname to archlinux
   copy: 
