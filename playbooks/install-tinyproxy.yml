@@ -54,5 +54,7 @@
         # WireServer
         firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p tcp -m tcp -d 168.63.129.16 --dport=80 -j ACCEPT
         firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p tcp -m tcp -d 168.63.129.16 --dport=32526 -j ACCEPT
+        # SMTP
+        firewall-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p tcp -m tcp --dport=587 -j ACCEPT
         # Drop all other outgoing traffic
         firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 2 -o eth0 -j DROP
