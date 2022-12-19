@@ -69,8 +69,9 @@
       Description=Reboot Scheduling
 
       [Timer]
-      OnCalendar=Mon,Thu *-*-* 03:00:00
+      OnCalendar=Mon,Thu *-*-* 12:00:00
       RandomizedDelaySec=180min
+      Persistent=true
 
       [Install]
       WantedBy=multi-user.target

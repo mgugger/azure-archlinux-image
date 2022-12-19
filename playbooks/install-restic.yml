@@ -8,3 +8,72 @@
       - -c
       - |
         pacman -Sy --noconfirm restic
+        useradd -m -N -s /usr/sbin/nologin restic
+
+- name: Create a directory if it does not exist
+  ansible.builtin.file:
+    path: /etc/restic
+    state: directory
+    group: root
+    owner: root
+
+- name: ensure file exists
+  copy:
+    content: ""
+    dest: /etc/restic/root.files
+    force: no
+    group: root
+    owner: restic
+    mode: 0555
+
+- name: ensure file exists
+  copy:
+    content: ""
+    dest: /etc/restic/root.env
+    force: no
+    group: root
+    owner: restic
+    mode: 0555
+
+- name: create restic@.service
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system/restic@.service
+    content: |
+      [Unit]
+      Description=Restic backup on %I
+      After=syslog.target
+      After=network-online.target
+
+      [Service]
+      Environment="http_proxy=http://127.0.0.1:8888"
+      Environment="https_proxy=http://127.0.0.1:8888"
+      Environment="HTTP_PROXY=http://127.0.0.1:8888"
+      Environment="HTTPS_PROXY=http://127.0.0.1:8888"
+      Type=oneshot
+      User=restic
+      ExecStart=/usr/bin/restic backup --files-from /etc/restic/%I.files
+      EnvironmentFile=/etc/restic/%I.env
+      AmbientCapabilities=CAP_DAC_READ_SEARCH
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: create restic@.timer
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system/restic@.timer
+    content: |
+      [Unit]
+      Description=Run Restic at 13:00
+
+      [Timer]
+      OnCalendar=*-*-* 13:00:00
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
