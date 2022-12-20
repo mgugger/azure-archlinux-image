@@ -26,6 +26,9 @@
     owner: restic
     mode: 0555
 
+# https://github.com/restic/restic/pull/2398
+# Once this is implemented, a B2 app key does not require delete caps anymore
+# b2 create-key --bucket <bucketName> <keyName> listBuckets,readFiles,writeFiles,listFiles
 - name: ensure file exists
   copy:
     content: ""
