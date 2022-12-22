@@ -14,6 +14,9 @@
 - name: pacstrap base system with linux-hardened and selinux
   command: pacstrap /mnt base-selinux linux-hardened linux-firmware openssh-selinux base-devel-selinux
 
+- name: touch /.autorelabel to ensure filesystem is labeled after first boot
+  command: touch /mnt/.autorelabel
+
 - name: Insert selinux repo
   ansible.builtin.blockinfile:
     path: /mnt/etc/pacman.conf
