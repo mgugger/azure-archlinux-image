@@ -12,7 +12,7 @@
       SigLevel = Never
 
 - name: pacstrap base system with linux-hardened and selinux
-  command: pacstrap /mnt base-selinux linux-hardened linux-firmware openssh-selinux base-devel-selinux
+  command: pacstrap /mnt base-selinux linux-hardened linux-firmware openssh-selinux base-devel-selinux semodule-utils
 
 - name: touch /.autorelabel to ensure filesystem is labeled after first boot
   command: touch /mnt/.autorelabel

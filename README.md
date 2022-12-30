@@ -52,6 +52,7 @@ Use the following runcmd in cloud-init to enforce selinux and optionally start c
 runcmd:
   - restorecon -r / -e /.snapshots
   - sed -i s/^SELINUX=.*$/SELINUX=enforcing/ /etc/selinux/config
+  - semanage permissive -a systemd_resolved_t
   - setenforce 1
   - systemctl --now enable firewalld
   - sed -i 's/<domain>/mydomain/g' /etc/caddy/Caddyfile
