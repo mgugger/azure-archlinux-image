@@ -44,6 +44,12 @@
       Environment="HTTP_PROXY=http://127.0.0.1:8888"
       Environment="HTTPS_PROXY=http://127.0.0.1:8888"
 
+- name: disable automatic upgrade from kernel as it is blocked by selinux
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/pacman.conf
+    regexp: ^\#*IgnorePkg(.*)$
+    line: IgnorePkg = linux-hardened
+
 - name: set systemd reboot-sched.service
   copy:
     owner: root
