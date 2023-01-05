@@ -48,7 +48,7 @@
   ansible.builtin.lineinfile:
     path: /mnt/etc/pacman.conf
     regexp: ^\#*IgnorePkg(.*)$
-    line: IgnorePkg = linux-hardened
+    line: IgnorePkg = linux-hardened linux linux-lts
 
 - name: set systemd reboot-sched.service
   copy:
