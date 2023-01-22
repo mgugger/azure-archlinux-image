@@ -20,8 +20,8 @@
             "disk_size": "4000M",
             "format": "raw",
             "accelerator": "kvm",
-            "iso_url": "https://mirror.puzzle.ch/archlinux/iso/2022.12.01/archlinux-x86_64.iso",
-            "iso_checksum": "sha256:de301b9f18973e5902b47bb00380732af38d8ca70084b573ae7cf36a818eb84c",
+            "iso_url": "https://mirror.puzzle.ch/archlinux/iso/2023.01.01/archlinux-x86_64.iso",
+            "iso_checksum": "sha256:61dbae312cf677be38a93f424c91abadd8a8ed1f3a602b697aac4c57a7872645",
             "headless": true,
             "firmware": "/usr/share/OVMF/OVMF_CODE.fd",
             "cpus": 2,
@@ -46,7 +46,7 @@
         {
             "type": "ansible",
             "user": "root",
-            "playbook_file": "playbooks/1_archlinux-install-playbook.yml",
+            "playbook_file": "playbooks/1_archlinux-server-install-playbook.yml",
             "extra_arguments": [ "--extra-vars", "username={{user `username`}} password={{user `password`}} user_ssh_public_key={{user `publickey`}} random_seed={{user `random_seed_for_oath`}}", "-v" ]
         }
     ],

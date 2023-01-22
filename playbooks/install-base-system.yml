@@ -11,8 +11,8 @@
       Server = https://github.com/archlinuxhardened/selinux/releases/download/ArchLinux-SELinux
       SigLevel = Never
 
-- name: pacstrap base system with linux-hardened and selinux
-  command: pacstrap /mnt base-selinux linux-hardened linux-firmware openssh-selinux base-devel-selinux semodule-utils
+- name: pacstrap base system with {{ kernel }} and selinux
+  command: pacstrap /mnt base-selinux {{ kernel }} linux-firmware openssh-selinux base-devel-selinux semodule-utils
 
 - name: touch /.autorelabel to ensure filesystem is labeled after first boot
   command: touch /mnt/.autorelabel

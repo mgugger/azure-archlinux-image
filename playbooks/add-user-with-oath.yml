@@ -48,19 +48,6 @@
     regexp: ^\#*UsePAM(.*)$
     line: UsePAM yes
 
-# Allow SSH without oath -> force oath only on cockpit
-# - name: enforce oath auth method
-#   ansible.builtin.lineinfile:
-#     path: /mnt/etc/ssh/sshd_config
-#     regexp: ^\#*AuthenticationMethods(.*)$
-#     line: AuthenticationMethods publickey,keyboard-interactive:pam
-
-# - name: enforce KbdInteractiveAuthentication 
-#   ansible.builtin.lineinfile:
-#     path: /mnt/etc/ssh/sshd_config
-#     regexp: ^\#*KbdInteractiveAuthentication(.*)$
-#     line: KbdInteractiveAuthentication yes
-
 - name: disable Passwordauthentication 
   ansible.builtin.lineinfile:
     path: /mnt/etc/ssh/sshd_config

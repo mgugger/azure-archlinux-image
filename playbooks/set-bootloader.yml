@@ -15,7 +15,7 @@
         echo "GRUB_TIMEOUT=5" >> /etc/default/grub
         
         sed -i /GRUB_CMDLINE_LINUX_DEFAULT/d  /etc/default/grub
-        echo 'GRUB_CMDLINE_LINUX_DEFAULT="quiet console=tty0 console=ttyS0,115200 lsm=landlock,lockdown,yama,integrity,selinux,bpf"' >> /etc/default/grub
+        echo 'GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=0 console=tty0 console=ttyS0,115200 lsm=landlock,lockdown,yama,integrity,selinux,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on efi=disable_early_pci_dma"' >> /etc/default/grub
         
         sed -i /GRUB_TERMINAL_INPUT/d  /etc/default/grub
         echo 'GRUB_TERMINAL_INPUT="serial console"' >> /etc/default/grub

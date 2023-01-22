@@ -1,66 +1,47 @@
 ---
 ### Taken from https://github.com/MicrosoftDocs/azure-docs/blob/main/articles/governance/policy/samples/guest-configuration-baseline-linux.md
-- name: block usb_storage module
+- name: block {{ item }} module
   ansible.builtin.lineinfile:
     path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist usb_storage
+    line: blacklist {{ item }}
     create: yes
-
-- name: block hfs module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist hfs
-    create: yes
-
-- name: block dccp module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist dccp
-    create: yes
-
-- name: block sctp module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist sctp
-    create: yes
-
-- name: block hfsplus module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist hfsplus
-    create: yes
-
-- name: block rds module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist rds
-    create: yes
-
-- name: block rds module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist rds
-    create: yes
-
-- name: block tipc module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist tipc
-    create: yes
-
-- name: block jffs2 module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist jffs2
-    create: yes
+  loop:
+    - usb_storage
+    - hfs
+    - dccp
+    - sctp
+    - hfsplus
+    - rds
+    - tipc
+    - jffs2
+    - n-hdlc
+    - ax25
+    - netrom
+    - x25
+    - rose
+    - decnet
+    - econet
+    - af_802154
+    - ipx
+    - appletalk
+    - psnap
+    - p8023
+    - p8022
+    - can
+    - atm
+    - cramfs
+    - freevxfs
+    - vivid
+    - firewire-core
+    - thunderbolt
 
 - name: Ensure core dumps are restricted
   ansible.builtin.lineinfile:
     path: /etc/security/limits.conf
-    line: hard core 0
+    line: "* hard core 0"
     create: yes
 
-- name: Ensure core dumps are restricted
+- name: set sysctl settings
   copy:
     owner: root
     group: root
@@ -68,25 +49,70 @@
     dest: /mnt/etc/sysctl.d/security_settings.conf
     content: |
       fs.suid_dumpable = 0
+      fs.protected_symlinks=1
+      fs.protected_hardlinks=1
+      fs.protected_fifos=2
+      fs.protected_regular=2
+      
       kernel.randomize_va_space = 2
+      kernel.kptr_restrict=2
+      kernel.dmesg_restrict=1
+      kernel.printk=3 3 3 3
+      kernel.unprivileged_bpf_disabled=1
+      kernel.sysrq=4
+      kernel.kexec_load_disabled=1
+      kernel.unprivileged_userns_clone=0
+      kernel.perf_event_paranoid=3
+      kernel.yama.ptrace_scope=2
+      
+      dev.tty.ldisc_autoload=0
+      
+      net.core.bpf_jit_harden=2
       net.ipv4.conf.all.send_redirects = 0
       net.ipv4.conf.default.send_redirects = 0
       net.ipv4.conf.all.accept_redirects = 0
       net.ipv4.conf.default.accept_redirects = 0
-      net.ipv6.conf.all.accept_redirects = 0
-      net.ipv6.conf.default.accept_redirects = 0
       net.ipv4.conf.all.secure_redirects = 0
       net.ipv4.conf.default.secure_redirects = 0
       net.ipv4.conf.all.accept_source_route = 0
-      net.ipv6.conf.all.accept_source_route = 0
       net.ipv4.conf.default.accept_source_route = 0
-      net.ipv6.conf.default.accept_source_route = 0
       net.ipv4.icmp_ignore_bogus_error_responses = 1
       net.ipv4.icmp_echo_ignore_broadcasts = 1
       net.ipv4.conf.all.log_martians = 1
       net.ipv4.conf.default.rp_filter = 1
       net.ipv4.conf.all.rp_filter = 1
       net.ipv4.tcp_syncookies = 1
+      net.ipv4.tcp_rfc1337=1
+      net.ipv4.icmp_echo_ignore_all=1
+      net.ipv4.tcp_sack=0
+      net.ipv4.tcp_dsack=0
+      net.ipv4.tcp_fack=0
+      net.ipv4.tcp_timestamps=0
+
+      net.ipv6.conf.all.accept_ra=0
+      net.ipv6.conf.default.accept_ra=0
+      net.ipv6.conf.all.accept_redirects = 0
+      net.ipv6.conf.default.accept_redirects = 0
+      net.ipv6.conf.default.accept_source_route = 0
+      net.ipv6.conf.all.accept_source_route = 0
+      net.ipv6.conf.all.use_tempaddr=2
+      net.ipv6.conf.default.use_tempaddr=2
+
+      vm.unprivileged_userfaultfd=0
+      vm.mmap_rnd_bits=32
+      vm.mmap_rnd_compat_bits=16
+
+- name: restrict su to wheel group
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/pam.d/su-l
+    regexp: ^\#*auth(.*)required(.*)pam_wheel.so(.*)use_uid$
+    line: auth required pam_wheel.so use_uid
+
+- name: increase passwd hashing rounds
+  ansible.builtin.lineinfile:
+    path: /etc/pam.d/passwd
+    regexp: ^password(.*)required(.*)pam_unix.so(.*)$
+    line: password required pam_unix.so sha512 shadow nullok rounds=65536
 
 - name: sshd ignorerhosts yes
   ansible.builtin.lineinfile:
