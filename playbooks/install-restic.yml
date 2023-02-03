@@ -12,7 +12,7 @@
 
 - name: Create a directory if it does not exist
   ansible.builtin.file:
-    path: /etc/restic
+    path: /mnt/etc/restic
     state: directory
     group: root
     owner: root
@@ -20,10 +20,10 @@
 - name: ensure file exists
   copy:
     content: ""
-    dest: /etc/restic/root.files
+    dest: /mnt/etc/restic/root.files
     force: no
     group: root
-    owner: restic
+    owner: root
     mode: 0555
 
 # https://github.com/restic/restic/pull/2398
@@ -32,10 +32,10 @@
 - name: ensure file exists
   copy:
     content: ""
-    dest: /etc/restic/root.env
+    dest: /mnt/etc/restic/root.env
     force: no
     group: root
-    owner: restic
+    owner: root
     mode: 0555
 
 - name: create restic@.service

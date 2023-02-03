@@ -13,7 +13,7 @@
     content: |
       vm.oom_kill_allocating_task = 1
       net.core.netdev_max_backlog = 16384
-      vm.swappiness = 5
+      vm.swappiness = 1
       vm.dirty_ratio = 60
       vm.vfs_cache_pressure = 50
       vm.dirty_background_ratio = 5
@@ -46,38 +46,15 @@
       w /sys/kernel/mm/transparent_hugepage/enabled - - - - never
       w /sys/kernel/mm/transparent_hugepage/defrag - - - - never
 
-- name: block floppy module
+- name: block {{ item }} module
   ansible.builtin.lineinfile:
     path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist floppy
+    line: blacklist {{ item }}
     create: yes
-
-- name: block pcspkr module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist pcspkr
-    create: yes
-
-- name: block joydev module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist joydev
-    create: yes
-
-- name: block psmouse module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist psmouse
-    create: yes
-
-- name: block cfg80211 module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist cfg80211
-    create: yes
-
-- name: block rfkill module
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist rfkill
-    create: yes
+  loop:
+    - floppy
+    - pcspkr
+    - joydev
+    - psmouse
+    - cfg80211
+    - rfkill

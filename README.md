@@ -40,7 +40,7 @@ packer build \
 -var "storage_account_name=TODO" \
 -var "password=TODO" \
 -var "random_seed_for_oath=$(openssl rand -hex 10)" \
-archlinux-packer.json
+azure-archlinux-packer.json
 ```
 
 # Post Deployment

@@ -1,0 +1,59 @@
+{
+    "variables": {
+        "username": null,
+        "publickey": null,
+        "storage_account_name": null,
+        "random_seed_for_oath": null,
+        "password": null
+    },
+    "builders": [
+        {
+            "type": "qemu",
+            "qemuargs": [
+                [
+                    "-m",
+                    "2048M"
+                ],
+                [ "-boot",  "menu=on,splash-time=10000" ]
+            ],
+            "output_directory": "./packer_output/qemu",
+            "disk_size": "4000M",
+            "format": "raw",
+            "accelerator": "kvm",
+            "iso_url": "https://mirror.puzzle.ch/archlinux/iso/2023.01.01/archlinux-x86_64.iso",
+            "iso_checksum": "sha256:61dbae312cf677be38a93f424c91abadd8a8ed1f3a602b697aac4c57a7872645",
+            "headless": false,
+            "firmware": "/usr/share/OVMF/x64/OVMF_CODE.fd",
+            "cpus": 2,
+            "disk_cache": "unsafe",
+            "disk_discard": "unmap",
+            "disk_compression": true,
+            "http_directory": "http",
+            "boot_wait": "20s",
+            "boot_command": [
+                "<enter><wait60><enter>",
+                "curl -sfSLO http://{{ .HTTPIP }}:{{ .HTTPPort }}/packer.sh<enter><wait>",
+                "chmod +x *.sh<enter>",
+                "./packer.sh<enter>"
+            ],
+            "ssh_username": "root",
+            "ssh_password": "root",
+            "ssh_timeout": "20m",
+            "shutdown_command": "sudo systemctl poweroff"
+        }
+    ],
+    "provisioners": [
+        {
+            "type": "ansible",
+            "user": "root",
+            "playbook_file": "playbooks/1_archlinux-server-install-playbook.yml",
+            "extra_arguments": [ 
+                "--scp-extra-args", "'-O'",
+                "--extra-vars", "username={{user `username`}} password={{user `password`}} user_ssh_public_key={{user `publickey`}} random_seed={{user `random_seed_for_oath`}}", "-v"
+            ],
+            "ansible_ssh_extra_args": [
+                "-oHostKeyAlgorithms=+ssh-rsa -oPubkeyAcceptedKeyTypes=+ssh-rsa"
+            ]
+        }
+    ]
+}

@@ -1,12 +1,13 @@
 ---
 # playbook.yml
-- name: 'Provision Arch Linux'
+- name: 'Provision Arch Linux Server'
   hosts: all
   become: true
   vars:
     install_device_name: /dev/vda
     cloud_init: true
     network_interface_name: eth0
+    kernel: linux-hardened
   tasks:
   - name: Check device name {{ install_device_name }} exists
     stat: "path={{ install_device_name }}"
