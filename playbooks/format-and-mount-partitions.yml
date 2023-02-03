@@ -21,6 +21,7 @@
     btrfs su cr /mnt/@home
     btrfs su cr /mnt/@root
     btrfs su cr /mnt/@srv
+    btrfs su cr /mnt/@snapshots
     btrfs su cr /mnt/@log
     btrfs su cr /mnt/@cache
     btrfs su cr /mnt/@tmp
@@ -52,6 +53,14 @@
     state: mounted
     fstype: btrfs
     opts: defaults,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@root
+
+- name: Mount snapshots subvol partition
+  mount:
+    path: "/mnt/.snapshots"
+    src: "{{ install_device_name }}{{ root_partition_number }}"
+    state: mounted
+    fstype: btrfs
+    opts: defaults,compress=zstd:6,noatime,discard=async,autodefrag,subvol=@snapshots
 
 - name: Mount srv subvol partition
   mount:
