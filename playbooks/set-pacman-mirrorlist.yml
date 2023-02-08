@@ -1,0 +1,73 @@
+---
+- name: create mirrorlist for switzerland and germany
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/pacman.d/mirrorlist
+    content: |
+      ##
+      ## Arch Linux repository mirrorlist
+      ## Generated on 2023-02-08
+      ##
+
+      ## Switzerland
+      Server = https://pkg.adfinis.com/archlinux/$repo/os/$arch
+      Server = https://mirror.init7.net/archlinux/$repo/os/$arch
+      Server = https://mirror.metanet.ch/archlinux/$repo/os/$arch
+      Server = https://mirror.puzzle.ch/archlinux/$repo/os/$arch
+      Server = https://theswissbay.ch/archlinux/$repo/os/$arch
+      Server = https://mirror.ungleich.ch/mirror/packages/archlinux/$repo/os/$arch
+      Server = https://mirror.worldhotspot.org/archlinux/$repo/os/$arch
+
+      ## Germany
+      Server = https://mirror.23m.com/archlinux/$repo/os/$arch
+      Server = https://ftp.agdsn.de/pub/mirrors/archlinux/$repo/os/$arch
+      Server = https://appuals.com/archlinux/$repo/os/$arch
+      Server = https://mirror.bethselamin.de/$repo/os/$arch
+      Server = https://mirror.chaoticum.net/arch/$repo/os/$arch
+      Server = https://mirror.checkdomain.de/archlinux/$repo/os/$arch
+      Server = https://mirror.clientvps.com/archlinux/$repo/os/$arch
+      Server = https://mirror.cmt.de/archlinux/$repo/os/$arch
+      Server = https://os.codefionn.eu/archlinux/$repo/os/$arch
+      Server = https://mirror.dogado.de/archlinux/$repo/os/$arch
+      Server = https://mirror.f4st.host/archlinux/$repo/os/$arch
+      Server = https://ftp.fau.de/archlinux/$repo/os/$arch
+      Server = https://pkg.fef.moe/archlinux/$repo/os/$arch
+      Server = https://dist-mirror.fem.tu-ilmenau.de/archlinux/$repo/os/$arch
+      Server = https://mirror.fsrv.services/archlinux/$repo/os/$arch
+      Server = https://mirror.gnomus.de/$repo/os/$arch
+      Server = https://archlinux.homeinfo.de/$repo/os/$arch
+      Server = https://mirror.informatik.tu-freiberg.de/arch/$repo/os/$arch
+      Server = https://mirror.iusearchbtw.nl/$repo/os/$arch
+      Server = https://mirrors.janbruckner.de/archlinux/$repo/os/$arch
+      Server = https://arch.jensgutermuth.de/$repo/os/$arch
+      Server = https://de.arch.mirror.kescher.at/$repo/os/$arch
+      Server = https://mirror.kumi.systems/archlinux/$repo/os/$arch
+      Server = https://mirror.fra10.de.leaseweb.net/archlinux/$repo/os/$arch
+      Server = https://mirror.metalgamer.eu/archlinux/$repo/os/$arch
+      Server = https://mirror.mikrogravitation.org/archlinux/$repo/os/$arch
+      Server = https://mirror.moson.org/arch/$repo/os/$arch
+      Server = https://mirrors.n-ix.net/archlinux/$repo/os/$arch
+      Server = https://mirror.netcologne.de/archlinux/$repo/os/$arch
+      Server = https://mirrors.niyawe.de/archlinux/$repo/os/$arch
+      Server = https://mirror.orbit-os.com/archlinux/$repo/os/$arch
+      Server = https://packages.oth-regensburg.de/archlinux/$repo/os/$arch
+      Server = https://mirror.pagenotfound.de/archlinux/$repo/os/$arch
+      Server = https://phinau.de/arch/$repo/os/$arch
+      Server = https://mirror.pseudoform.org/$repo/os/$arch
+      Server = https://www.ratenzahlung.de/mirror/archlinux/$repo/os/$arch
+      Server = https://ftp.halifax.rwth-aachen.de/archlinux/$repo/os/$arch
+      Server = https://mirror.satis-faction.de/archlinux/$repo/os/$arch
+      Server = https://mirror.selfnet.de/archlinux/$repo/os/$arch
+      Server = https://mirror.spaceint.fr/archlinux/$repo/os/$arch
+      Server = https://ftp.spline.inf.fu-berlin.de/mirrors/archlinux/$repo/os/$arch
+      Server = https://mirror.sunred.org/archlinux/$repo/os/$arch
+      Server = https://archlinux.thaller.ws/$repo/os/$arch
+      Server = https://mirror.ubrco.de/archlinux/$repo/os/$arch
+      Server = https://mirror.undisclose.de/archlinux/$repo/os/$arch
+      Server = https://arch.unixpeople.org/$repo/os/$arch
+      Server = https://ftp.wrz.de/pub/archlinux/$repo/os/$arch
+      Server = https://mirror.wtnet.de/archlinux/$repo/os/$arch
+      Server = https://mirrors.xtom.de/archlinux/$repo/os/$arch
+      Server = https://arch.mirror.zachlge.org/$repo/os/$arch

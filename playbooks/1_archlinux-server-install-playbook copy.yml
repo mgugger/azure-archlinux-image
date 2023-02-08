@@ -34,6 +34,8 @@
 
   - include_tasks: install-base-system.yml
 
+  - include_tasks: set-pacman-mirrorlist.yml
+
   - include_tasks: set-locale-and-language.yml
 
   - include_tasks: set-bootloader.yml
