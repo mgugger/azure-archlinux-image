@@ -8,9 +8,11 @@
       - -c
       - |
         systemctl enable apparmor
+        sudo -u {{ username }} yay -Sy --noconfirm --aur apparmor.d-git --overwrite '*'
 
 - name: enable caching of apparmor profiles
   ansible.builtin.lineinfile:
     path: /mnt/etc/apparmor/parser.conf
     line: write-cache
     create: yes
+

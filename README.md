@@ -8,8 +8,8 @@ This repository contains:
 The archlinux image contains:
 * cloud-init
 * grub2
-* btrfs with multiple volumes for easier snapshotting
-* selinux (not enforced, see post deployment steps)
+* btrfs
+* apparmor
 * cockpit for server management 
 * firewalld
 * The admin user has oath (2fa) with a totp activated and requires username + password + totp for logging in via cockpit
@@ -50,10 +50,6 @@ Use the following runcmd in cloud-init to enforce selinux and optionally start c
 ```
 #cloud-config
 runcmd:
-  - restorecon -r / -e /.snapshots
-  - sed -i s/^SELINUX=.*$/SELINUX=enforcing/ /etc/selinux/config
-  - semanage permissive -a systemd_resolved_t
-  - setenforce 1
   - systemctl --now enable firewalld
   - sed -i 's/<domain>/mydomain/g' /etc/caddy/Caddyfile
   - systemctl enable caddy
