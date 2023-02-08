@@ -1,14 +1,4 @@
 ---
-- name: enable systemd-networkd
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
-        systemctl enable systemd-resolved
-
 - name: Create resolved.conf.d directory
   ansible.builtin.file:
     path: /mnt/etc/systemd/resolved.conf.d

@@ -29,7 +29,7 @@
     content: |
       [Timer]
       OnBootSec=2h
-      OnUnitInactiveSec=1
+      OnUnitInactiveSec=12h
 
 - name: set pacman-auto-update systemd proxy settings
   copy:
@@ -147,8 +147,7 @@
       - /bin/bash
       - -c
       - |
-        sudo -u {{ username }} yay -Sy --noconfirm --aur snap-pac-grub
-        #Dependency of above: pacman -Sy --noconfirm snap-pac
+        pacman -Sy --noconfirm snap-pac
         snapper -c root create-config /
         systemctl enable snapper-timeline.timer
         systemctl enable snapper-cleanup.timer
@@ -162,39 +161,3 @@
     - -c
     - |
       snapper --no-dbus -c root create-config /
-
-- name: set snapper TIMELINE_MIN_AGE
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/snapper/configs/root
-    regexp: ^TIMELINE_MIN_AGE(.*)$
-    line: TIMELINE_MIN_AGE="1800"
-
-- name: set snapper TIMELINE_LIMIT_HOURLY
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/snapper/configs/root
-    regexp: ^TIMELINE_LIMIT_HOURLY(.*)$
-    line: TIMELINE_LIMIT_HOURLY="0"
-
-- name: set snapper TIMELINE_LIMIT_DAILY
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/snapper/configs/root
-    regexp: ^TIMELINE_LIMIT_DAILY(.*)$
-    line: TIMELINE_LIMIT_DAILY="7"
-
-- name: set snapper TIMELINE_LIMIT_WEEKLY
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/snapper/configs/root
-    regexp: ^TIMELINE_LIMIT_WEEKLY(.*)$
-    line: TIMELINE_LIMIT_WEEKLY="0"
-
-- name: set snapper TIMELINE_LIMIT_MONTHLY
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/snapper/configs/root
-    regexp: ^TIMELINE_LIMIT_MONTHLY(.*)$
-    line: TIMELINE_LIMIT_MONTHLY="0"
-
-- name: set snapper TIMELINE_LIMIT_YEARLY
-  ansible.builtin.lineinfile:
-    path: /mnt/etc/snapper/configs/root
-    regexp: ^TIMELINE_LIMIT_YEARLY(.*)$
-    line: TIMELINE_LIMIT_YEARLY="0"

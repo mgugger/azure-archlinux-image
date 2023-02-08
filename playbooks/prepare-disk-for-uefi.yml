@@ -27,7 +27,7 @@
     device: "{{ install_device_name }}"
     number: 2
     state: present
-    name: root
+    name: arch_os
     part_start: 512MB
     label: gpt
     part_end: 100%
@@ -39,3 +39,8 @@
     dev: "{{ install_device_name }}1"
     fstype: vfat
     force: yes
+
+- name: set root filesystem label to arch_os
+  shell: | 
+    btrfs filesystem label /dev/{{ install_device_name }}1 "arch_os"
+    fatlabel /dev/{{ install_device_name }}1 "esp"

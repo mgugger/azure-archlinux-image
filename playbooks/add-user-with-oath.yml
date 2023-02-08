@@ -7,19 +7,11 @@
       - /bin/bash
       - -c
       - |
-        useradd -m {{ username }}
-        {% if ansible_ssh_pass is defined %}
-        echo -e "{{ ansible_ssh_pass }}\n{{ ansible_ssh_pass }}" | passwd {{ username }}
-        {% endif %}
-        gpasswd -a {{ username }} wheel
-        gpasswd -a {{ username }} uucp
-        gpasswd -a {{ username }} users
+        useradd -m {{ username }} -G wheel -s /bin/bash
         echo -e "{{ password }}\n{{ password }}" | passwd {{ username }}
         mkdir /home/{{ username }}/.ssh
         echo "{{ user_ssh_public_key }}" >> /home/{{ username }}/.ssh/authorized_keys
-        semanage login -a -s sysadm_u {{ username }}
-        setsebool -P ssh_sysadm_login on
-        # look root passwd
+        # look root
         passwd -l root
        
 - name: allow admin user passwordless sudo

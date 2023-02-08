@@ -1,0 +1,16 @@
+---
+- name: Install apparmor profiles
+  command: 
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        sudo -u {{ username }} yay -Sy --noconfirm --aur --overwrite '*' apparmor.d-git
+
+- name: enable caching of apparmor profiles
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/apparmor/parser.conf
+    line: write-cache
+    create: yes

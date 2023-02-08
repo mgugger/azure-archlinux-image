@@ -13,7 +13,7 @@
     src: "{{ install_device_name }}{{ root_partition_number }}"
     state: mounted
     fstype: btrfs
-    opts: compress=zstd:6,noatime,discard=async,autodefrag
+    opts: compress=zstd:{{ zstd_compression }},noatime,discard=async,autodefrag
 
 - name: create btrfs subvolumes
   shell: | 
@@ -24,7 +24,7 @@
     btrfs su cr /mnt/@snapshots
     btrfs su cr /mnt/@log
     btrfs su cr /mnt/@cache
-    btrfs su cr /mnt/@tmp
+    btrfs su cr /mnt/@vartmp
     umount /mnt
 
 - name: Mount subvol @ as root partition
@@ -86,30 +86,22 @@
     fstype: btrfs
     opts: defaults,compress=zstd:{{ zstd_compression }},noatime,discard=async,autodefrag,subvol=@cache
 
-- name: Mount /tmp subvol partition
+- name: Mount /var/tmp subvol partition
   mount:
-    path: "/mnt/tmp"
+    path: "/mnt/var/tmp"
     src: "{{ install_device_name }}{{ root_partition_number }}"
     state: mounted
     fstype: btrfs
     opts: defaults,compress=zstd:{{ zstd_compression }},noatime,nodev,nosuid,noexec,discard=async,autodefrag,subvol=@tmp
-    
-- name: Mount /var/tmp to /tmp
-  mount:
-    path: "/mnt/var/tmp"
-    src: "/mnt/tmp"
-    state: mounted
-    fstype: btrfs
-    opts: rw,noexec,nosuid,nodev,bind
 
 - name: Create a directory if it does not exist
   ansible.builtin.file:
-    path: /mnt/efi
+    path: /mnt/boot
     state: directory
 
 - name: Mount boot partition
   mount:
-    path: "/mnt/efi"
+    path: "/mnt/boot"
     src: "{{ install_device_name }}1"
     state: mounted
     fstype: vfat

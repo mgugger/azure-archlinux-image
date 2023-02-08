@@ -3,27 +3,8 @@
   ansible.builtin.pause:
     minutes: 1
 
-- name: Insert selinux repo
-  ansible.builtin.blockinfile:
-    path: /etc/pacman.conf
-    block: |
-      [selinux]
-      Server = https://github.com/archlinuxhardened/selinux/releases/download/ArchLinux-SELinux
-      SigLevel = Never
-
-- name: pacstrap base system with {{ kernel }} and selinux
-  command: pacstrap /mnt base-selinux {{ kernel }} linux-firmware openssh-selinux base-devel-selinux semodule-utils
-
-- name: touch /.autorelabel to ensure filesystem is labeled after first boot
-  command: touch /mnt/.autorelabel
-
-- name: Insert selinux repo
-  ansible.builtin.blockinfile:
-    path: /mnt/etc/pacman.conf
-    block: |
-      [selinux]
-      Server = https://github.com/archlinuxhardened/selinux/releases/download/ArchLinux-SELinux
-      SigLevel = Never
+- name: pacstrap base system with {{ kernel }} and apparmor
+  command: pacstrap /mnt base {{ kernel }} linux-firmware openssh base-devel apparmor
 
 - name: Run genfstab
   shell: 'genfstab -U /mnt > /mnt/etc/fstab'
@@ -74,7 +55,7 @@
         hwclock --systohc
         locale-gen
         echo -e "{{root_pw}}\n{{root_pw}}" | passwd
-        pacman -Sy --noconfirm btrfs-progs nano python sudo-selinux wireguard-tools
+        pacman -Sy --noconfirm btrfs-progs nano python sudo wireguard-tools
         mkinitcpio -P || true
 
 - name: enable sshd
@@ -107,7 +88,7 @@
       - |
         sudo systemctl enable btrfs-scrub@home.timer
 
-- name: enable systemd-networkd
+- name: enable systemd services
   command:
     argv:
       - /usr/bin/arch-chroot
@@ -116,16 +97,11 @@
       - -c
       - |
         systemctl enable systemd-networkd
-
-- name: enable systemd-timesyncd
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
         systemctl enable systemd-timesyncd
+        systemctl enable systemd-homed
+        systemctl enable systemd-logind
+        systemctl enable systemd-boot-update
+        systemctl enable systemd-resolved
 
 - name: enable auditd
   command:
@@ -136,6 +112,16 @@
       - -c
       - |
         systemctl enable auditd
+
+- name: enable apparmor
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        systemctl enable apparmor
 
 - name: Set wired networkd config
   copy: 

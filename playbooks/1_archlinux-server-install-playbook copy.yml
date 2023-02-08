@@ -60,6 +60,8 @@
 
   - include_tasks: set-security-improvements.yml
 
+  - include_tasks: set-apparmor.yml
+
   - name: Remove cached installed and orphaned packages
     ignore_errors: true
     command:
@@ -71,8 +73,6 @@
         - |
           pacman -Scc --noconfirm
           pacman -Rsn --noconfirm `pacman -Qqtd`
-
-  - include_tasks: set-workarounds.yml
 
   # Install auto update and snapper latest to avoid unneeded snapshots in the image
   - include_tasks: set-auto-update.yml

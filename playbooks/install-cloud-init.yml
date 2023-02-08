@@ -49,8 +49,6 @@
       - set_hostname
       - update_hostname
       - update_etc_hosts
-      - ca-certs
-      - rsyslog
       - users-groups
       - ssh
 
@@ -66,9 +64,7 @@
 
       # The modules that run in the 'final' stage
       cloud_final_modules:
-      - package-update-upgrade-install
       - write-files-deferred
-      - mcollective
       - reset_rmc
       - refresh_rmc_and_interface
       - scripts-vendor
@@ -79,7 +75,6 @@
       - ssh-authkey-fingerprints
       - keys-to-console
       - install-hotplug
-      - phone-home
       - wireguard
       - final-message
       - power-state-change

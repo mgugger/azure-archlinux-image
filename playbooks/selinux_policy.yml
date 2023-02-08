@@ -1,8 +1,0 @@
----
-setsebool -P syncthing_manage_all_user_content on
-setsebool -P ssh_use_gpg_agent on
-setsebool -P xserver_allow_dri on
-setsebool -P allow_execmem on
-setsebool -P user_dmesg on
-setsebool -P mozilla_manage_all_user_content on
-setsebool -P allow_ypbind on

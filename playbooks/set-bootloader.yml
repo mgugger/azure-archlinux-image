@@ -1,5 +1,5 @@
 ---
-- name: create grub bootloader
+- name: install systemd-boot to esp
   command:
     argv:
       - /usr/bin/arch-chroot
@@ -7,29 +7,40 @@
       - /bin/bash
       - -c
       - |
-        pacman -Sy --noconfirm grub efibootmgr
-        sed -i /GRUB_DISABLE_OS_PROBER/d  /etc/default/grub
-        echo "GRUB_DISABLE_OS_PROBER=true" >> /etc/default/grub
-        
-        sed -i /GRUB_TIMEOUT/d  /etc/default/grub
-        echo "GRUB_TIMEOUT=5" >> /etc/default/grub
-        
-        sed -i /GRUB_CMDLINE_LINUX_DEFAULT/d  /etc/default/grub
-        echo 'GRUB_CMDLINE_LINUX_DEFAULT="quiet loglevel=0 console=tty0 console=ttyS0,115200 lsm=landlock,lockdown,yama,integrity,selinux,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on efi=disable_early_pci_dma"' >> /etc/default/grub
-        
-        sed -i /GRUB_TERMINAL_INPUT/d  /etc/default/grub
-        echo 'GRUB_TERMINAL_INPUT="serial console"' >> /etc/default/grub
+        bootctl --esp-path=/boot install
 
-        sed -i /GRUB_TERMINAL_OUTPUT/d  /etc/default/grub
-        echo 'GRUB_TERMINAL_OUTPUT="gfxterm serial"' >> /etc/default/grub
+- name: set loader.conf loader entry
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/boot/loader/loader.conf
+    content: |
+      default  arch.conf
+      timeout  5
+      console-mode max
+      editor   no
 
-        sed -i /GRUB_SERIAL_COMMAND/d  /etc/default/grub
-        echo 'GRUB_SERIAL_COMMAND="serial --unit=0 --speed=115200"' >> /etc/default/grub
-        
-        grub-install --target=x86_64-efi --efi-directory=/efi --bootloader-id=GRUB --removable
-        grub-mkconfig -o /boot/grub/grub.cfg
+- name: set arch.conf loader entry
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/boot/loader/entries/arch.conf
+    content: |
+      title   Arch Linux
+      linux   /vmlinuz-linux
+      initrd  /initramfs-linux.img
+      options root="LABEL=arch_os" rw quiet console=tty0 console=ttyS0,115200 lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on efi=disable_early_pci_dma
 
-- name: get UUID
-  shell: "blkid | grep {{ install_device_name }}2 | awk -F : '{print \"blkid -s UUID -o value \"$1}' |sh"
-  register: UUID_value
-#TODO: Set bootloader password for grub
+- name: set arch-fallback.conf loader entry
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/boot/loader/entries/arch-fallback.conf
+    content: |
+      title   Arch Linux (fallback initramfs)
+      linux   /vmlinuz-linux
+      initrd  /initramfs-linux-fallback.img
+      options root="LABEL=arch_os" rw console=tty0 console=ttyS0,115200
