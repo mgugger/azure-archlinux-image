@@ -44,7 +44,6 @@
     - var/log
     - var/cache/
     - var/tmp
-    - .snapshots
 
 - name: Mount home subvol partition
   mount:
@@ -61,14 +60,6 @@
     state: mounted
     fstype: btrfs
     opts: defaults,compress=zstd:{{ zstd_compression }},noatime,discard=async,autodefrag,subvol=@root
-
-- name: Mount snapshots subvol partition
-  mount:
-    path: "/mnt/.snapshots"
-    src: "{{ install_device_name }}{{ root_partition_number }}"
-    state: mounted
-    fstype: btrfs
-    opts: defaults,compress=zstd:{{ zstd_compression }},noatime,discard=async,autodefrag,subvol=@snapshots
 
 - name: Mount srv subvol partition
   mount:
