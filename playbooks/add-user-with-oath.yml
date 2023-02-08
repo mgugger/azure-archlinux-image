@@ -19,6 +19,8 @@
         echo "{{ user_ssh_public_key }}" >> /home/{{ username }}/.ssh/authorized_keys
         semanage login -a -s sysadm_u {{ username }}
         setsebool -P ssh_sysadm_login on
+        # look root passwd
+        passwd -l root
        
 - name: allow admin user passwordless sudo
   ansible.builtin.lineinfile:

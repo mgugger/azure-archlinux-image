@@ -1,13 +1,15 @@
 ---
 # playbook.yml
-- name: 'Provision Arch Linux Server'
+- name: 'Provision Arch Linux Desktop'
   hosts: all
   become: true
   vars:
     install_device_name: /dev/vda
-    cloud_init: true
+    cloud_init: false
     network_interface_name: eth0
-    kernel: linux-hardened
+    kernel: linux
+    zstd_compression: 3
+    root_pw: "root"
   tasks:
   - name: Check device name {{ install_device_name }} exists
     stat: "path={{ install_device_name }}"
@@ -18,10 +20,10 @@
     block:
       - command: mountpoint -q /mnt
         register: root_mountpoint
-        ignore_errors: yes
+        ignore_errors: true
       - command: mountpoint -q /mnt/boot
         register: boot_mountpoint
-        ignore_errors: yes
+        ignore_errors: true
       - set_fact:
           root_mounted: "{{ root_mountpoint.rc == 0 }}"
           boot_mounted: "{{ boot_mountpoint.rc == 0 }}"
@@ -38,29 +40,17 @@
 
   - include_tasks: set-systemd-resolved.yml
 
-  - include_tasks: install-cloud-init.yml
-
   - include_tasks: install-firewalld.yml
 
-  - include_tasks: add-user-with-oath.yml
-
-  - include_tasks: install-yay.yml
-
-#  - include_tasks: install-walinuxagent.yml
-
-  - include_tasks: install-cockpit.yml
-
-  - include_tasks: install-caddy.yml
+#  - include_tasks: install-yay.yml
 
   - include_tasks: install-restic.yml
-
-  #- include_tasks: install-fluent-bit.yml
 
   - include_tasks: other-optimizations.yml
 
   - include_tasks: install-tinyproxy.yml
 
-  - include_tasks: set-security-improvements.yml
+  #- include_tasks: set-security-improvements.yml
 
   - name: Remove cached installed and orphaned packages
     ignore_errors: true
@@ -77,6 +67,6 @@
   - include_tasks: set-workarounds.yml
 
   # Install auto update and snapper latest to avoid unneeded snapshots in the image
-  - include_tasks: set-auto-update.yml
+  #- include_tasks: set-auto-update.yml
 
   - include_tasks: set-proxy-env.yml

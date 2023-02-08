@@ -1,0 +1,80 @@
+---
+# playbook.yml
+- name: 'Provision Arch Linux Server'
+  hosts: all
+  become: true
+  vars:
+    install_device_name: /dev/vda
+    cloud_init: true
+    network_interface_name: eth0
+    kernel: linux-hardened
+    zstd_compression: 6
+    root_pw: "{{ lookup('password', '/dev/null chars=ascii_letters,digit length=64') | lower }}"
+  tasks:
+  - name: Check device name {{ install_device_name }} exists
+    stat: "path={{ install_device_name }}"
+    register: device
+    failed_when: not device.stat.exists
+
+  - name: Check if partitions are mounted
+    block:
+      - command: mountpoint -q /mnt
+        register: root_mountpoint
+        ignore_errors: true
+      - command: mountpoint -q /mnt/boot
+        register: boot_mountpoint
+        ignore_errors: true
+      - set_fact:
+          root_mounted: "{{ root_mountpoint.rc == 0 }}"
+          boot_mounted: "{{ boot_mountpoint.rc == 0 }}"
+
+  - include_tasks: prepare-disk-for-uefi.yml
+
+  - include_tasks: format-and-mount-partitions.yml
+
+  - include_tasks: install-base-system.yml
+
+  - include_tasks: set-locale-and-language.yml
+
+  - include_tasks: set-bootloader.yml
+
+  - include_tasks: set-systemd-resolved.yml
+
+  - include_tasks: install-cloud-init.yml
+
+  - include_tasks: install-firewalld.yml
+
+  - include_tasks: add-user-with-oath.yml
+
+  - include_tasks: install-yay.yml
+
+  - include_tasks: install-cockpit.yml
+
+  - include_tasks: install-caddy.yml
+
+  - include_tasks: install-restic.yml
+
+  - include_tasks: other-optimizations.yml
+
+  - include_tasks: install-tinyproxy.yml
+
+  - include_tasks: set-security-improvements.yml
+
+  - name: Remove cached installed and orphaned packages
+    ignore_errors: true
+    command:
+      argv:
+        - /usr/bin/arch-chroot
+        - /mnt
+        - /bin/bash
+        - -c
+        - |
+          pacman -Scc --noconfirm
+          pacman -Rsn --noconfirm `pacman -Qqtd`
+
+  - include_tasks: set-workarounds.yml
+
+  # Install auto update and snapper latest to avoid unneeded snapshots in the image
+  - include_tasks: set-auto-update.yml
+
+  - include_tasks: set-proxy-env.yml

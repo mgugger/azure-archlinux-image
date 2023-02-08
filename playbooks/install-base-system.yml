@@ -62,10 +62,6 @@
       HOOKS=(base systemd autodetect modconf block filesystems fsck btrfs)
       COMPRESSION="zstd"
 
-- name: generate root pw
-  set_fact:
-    root_pw: "{{ lookup('password', '/dev/null chars=ascii_letters,digit length=64') | lower }}"
-
 - name: Configure System
   command:
     argv:
@@ -78,7 +74,6 @@
         hwclock --systohc
         locale-gen
         echo -e "{{root_pw}}\n{{root_pw}}" | passwd
-        passwd -l root
         pacman -Sy --noconfirm btrfs-progs nano python sudo-selinux wireguard-tools
         mkinitcpio -P || true
 
