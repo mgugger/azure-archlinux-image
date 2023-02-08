@@ -19,7 +19,7 @@
       default  arch.conf
       timeout  5
       console-mode max
-      editor   yes
+      editor   no
 
 - name: set arch.conf loader entry
   copy:
