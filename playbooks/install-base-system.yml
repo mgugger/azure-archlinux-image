@@ -113,16 +113,6 @@
       - |
         systemctl enable auditd
 
-- name: enable apparmor
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
-        systemctl enable apparmor
-
 - name: Set wired networkd config
   copy: 
     dest: /mnt/etc/systemd/network/20-wired.network

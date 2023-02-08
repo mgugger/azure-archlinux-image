@@ -1,4 +1,14 @@
 ---
+- name: enable apparmor
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        systemctl enable apparmor
+
 - name: Install apparmor profiles
   command: 
     argv:
