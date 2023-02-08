@@ -10,6 +10,7 @@
     kernel: linux-hardened
     zstd_compression: 6
     root_pw: "{{ lookup('password', '/dev/null chars=ascii_letters,digit length=64') | lower }}"
+    root_filesystem_label: "arch_os"
   tasks:
   - name: Check device name {{ install_device_name }} exists
     stat: "path={{ install_device_name }}"

@@ -17,6 +17,7 @@
 
 - name: create btrfs subvolumes
   shell: | 
+    btrfs filesystem label /mnt/ {{ root_filesystem_label }}
     btrfs su cr /mnt/@
     btrfs su cr /mnt/@home
     btrfs su cr /mnt/@root
@@ -25,6 +26,7 @@
     btrfs su cr /mnt/@log
     btrfs su cr /mnt/@cache
     btrfs su cr /mnt/@vartmp
+    btrfs su set-default /mnt/@
     umount /mnt
 
 - name: Mount subvol @ as root partition
