@@ -36,7 +36,15 @@
     opts: defaults,compress=zstd:{{ zstd_compression }},noatime,discard=async,autodefrag,subvol=@
 
 - name: create folders for btrfs subvolumes
-  command: mkdir -p /mnt/{home,root,srv,var\/log,var/cache,tmp,var\/tmp,.snapshots}
+  command: mkdir -p /mnt/{{ item }}
+  loop:
+    - home
+    - root
+    - srv
+    - var/log
+    - var/cache/
+    - var/tmp
+    - .snapshots
 
 - name: Mount home subvol partition
   mount:
@@ -92,7 +100,7 @@
     src: "{{ install_device_name }}{{ root_partition_number }}"
     state: mounted
     fstype: btrfs
-    opts: defaults,compress=zstd:{{ zstd_compression }},noatime,nodev,nosuid,noexec,discard=async,autodefrag,subvol=@tmp
+    opts: defaults,compress=zstd:{{ zstd_compression }},noatime,nodev,nosuid,noexec,discard=async,autodefrag,subvol=@vartmp
 
 - name: Create a directory if it does not exist
   ansible.builtin.file:
