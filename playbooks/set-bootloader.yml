@@ -7,7 +7,7 @@
       - /bin/bash
       - -c
       - |
-        bootctl --esp-path=/boot install
+        bootctl install
 
 - name: set loader.conf loader entry
   copy:
