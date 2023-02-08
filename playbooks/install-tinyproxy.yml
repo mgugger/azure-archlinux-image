@@ -38,8 +38,8 @@
 
 - name: set tinyproxy.conf filterlist
   copy:
-    owner: tinyproxy
-    group: tinyproxy
+    owner: root
+    group: root
     force: yes
     dest: /mnt/etc/tinyproxy/filter
     content: |
