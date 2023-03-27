@@ -11,8 +11,13 @@
         firewall-offline-cmd --remove-service=ssh
         firewall-offline-cmd --zone public --add-rich-rule 'rule service name="ssh" accept limit value="2/m"'
         # Enable wireguard
-        firewall-cmd --permanent --zone=public --add-service=wireguard
-        firewall-cmd --permanent --zone=public --add-masquerade
+        firewall-offline-cmd --zone=public --add-service=wireguard
+        firewall-offline-cmd --zone=public --add-masquerade
+        
+        # Required to act as VPN
+        firewall-offline-cmd --zone=public --add-interface=eth0
+        firewall-offline-cmd --zone=public --add-interface=eth0
+
         # Enable firewalld in cloud-init: systemctl enable firewalld
         systemctl disable firewalld
 

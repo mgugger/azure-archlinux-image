@@ -102,6 +102,10 @@
       vm.mmap_rnd_bits=32
       vm.mmap_rnd_compat_bits=16
 
+      # Allow for wireguard
+      sysctl -w net.ipv4.ip_forward=1
+      sysctl -w net.ipv6.conf.all.forwarding=1
+
 - name: restrict su to wheel group
   ansible.builtin.lineinfile:
     path: /mnt/etc/pam.d/su-l
