@@ -2,8 +2,8 @@
 ### Taken from https://github.com/MicrosoftDocs/azure-docs/blob/main/articles/governance/policy/samples/guest-configuration-baseline-linux.md
 - name: block {{ item }} module
   ansible.builtin.lineinfile:
-    path: /mnt/etc/modprobe.d/modprobe.conf
-    line: blacklist {{ item }}
+    path: /mnt/etc/modprobe.d/blacklist.conf
+    line: install {{ item }} /bin/true
     create: yes
   loop:
     - usb_storage
@@ -59,7 +59,7 @@
       kernel.dmesg_restrict=1
       kernel.printk=3 3 3 3
       kernel.unprivileged_bpf_disabled=1
-      kernel.sysrq=4
+      kernel.sysrq=0
       kernel.kexec_load_disabled=1
       kernel.unprivileged_userns_clone=0
       kernel.perf_event_paranoid=3
@@ -78,6 +78,7 @@
       net.ipv4.conf.default.accept_source_route = 0
       net.ipv4.icmp_ignore_bogus_error_responses = 1
       net.ipv4.icmp_echo_ignore_broadcasts = 1
+      net.ipv4.conf.default.log_martians = 1
       net.ipv4.conf.all.log_martians = 1
       net.ipv4.conf.default.rp_filter = 1
       net.ipv4.conf.all.rp_filter = 1
@@ -124,11 +125,11 @@
     regexp: ^IgnoreRhosts(.*)$
     line: IgnoreRhosts yes
 
-- name: sshd MaxAuthTries 4
+- name: sshd MaxAuthTries 3
   ansible.builtin.lineinfile:
     path: /mnt/etc/ssh/sshd_config
     regexp: ^MaxAuthTries(.*)$
-    line: MaxAuthTries 4
+    line: MaxAuthTries 3
 
 - name: sshd RhostsRSAAuthentication no
   ansible.builtin.lineinfile:
@@ -165,3 +166,63 @@
     path: /mnt/etc/ssh/sshd_config
     regexp: ^ClientAliveCountMax(.*)$
     line: LoginGraceTime 1m
+
+- name: set sshd compression yes 
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*Compression(.*)$
+    line: Compression yes
+
+- name: set sshd ClientAliveCountMax to 2
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*ClientAliveCountMax(.*)$
+    line: ClientAliveCountMax 2
+
+- name: set sshd AllowTcpForwarding no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*AllowTcpForwarding(.*)$
+    line: AllowTcpForwarding no
+
+- name: set sshd AllowAgentForwarding no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*AllowAgentForwarding(.*)$
+    line: AllowAgentForwarding no
+
+- name: set sshd MaxSessions to 2
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*MaxSessions(.*)$
+    line: MaxSessions 2
+
+- name: set sshd TCPKeepAlive to no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*TCPKeepAlive(.*)$
+    line: TCPKeepAlive no
+
+- name: set SHA_CRYPT_MAX_ROUNDS
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/login.defs
+    regexp: ^\#*SHA_CRYPT_MAX_ROUNDS(.*)$
+    line: SHA_CRYPT_MAX_ROUNDS 4000000
+
+- name: set SHA_CRYPT_MIN_ROUNDS
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/login.defs
+    regexp: ^\#*SHA_CRYPT_MIN_ROUNDS(.*)$
+    line: SHA_CRYPT_MIN_ROUNDS 400000
+
+- name: set SHA_CRYPT_MIN_ROUNDS
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/login.defs
+    regexp: ^\#*SHA_CRYPT_MIN_ROUNDS(.*)$
+    line: SHA_CRYPT_MIN_ROUNDS 400000
+
+- name: set default umask to 027
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/profile
+    regexp: ^umask(.*)$
+    line: umask 027
