@@ -7,7 +7,7 @@ This repository contains:
 
 The archlinux image contains:
 * cloud-init
-* grub2
+* systemd-boot
 * btrfs
 * apparmor
 * cockpit for server management 
@@ -15,7 +15,7 @@ The archlinux image contains:
 * The admin user has oath (2fa) with a totp activated and requires username + password + totp for logging in via cockpit
 * It will use quad9 dns with DNS over TLS
 * pacman-auto-update is enabled to regulary update and reboot the machine
-* pacman updates will create btrfs snapshot which can be booted from in the serial console in case an update goes wrong
+* pac-snap / pacman updates will create btrfs snapshots 
 * All outgoing traffic must pass through tinyproxy on localhost to enable domain filtering
 * For backup, restic with systemd jobs is preinstalled
 * Azure Agents are removed
