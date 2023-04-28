@@ -117,7 +117,7 @@
     owner: root
     group: root
     force: yes
-    dest: /mnt/etc/pacman.d/hooks/00-prevent-interruption-pre.hook
+    dest: /mnt/etc/pacman.d/hooks/00-prevent-interruption-post.hook
     content: |
       [Trigger]
       Operation = Install
