@@ -70,6 +70,32 @@
       [Install]
       WantedBy=multi-user.target
 
+- name: create restic-check@.service
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system/restic-check@.service
+    content: |
+      [Unit]
+      Description=Restic backup check on %I
+      After=syslog.target
+      After=network-online.target
+
+      [Service]
+      Environment="http_proxy=http://127.0.0.1:8888"
+      Environment="https_proxy=http://127.0.0.1:8888"
+      Environment="HTTP_PROXY=http://127.0.0.1:8888"
+      Environment="HTTPS_PROXY=http://127.0.0.1:8888"
+      Type=oneshot
+      User=restic
+      ExecStart=/usr/bin/restic check --read-data
+      EnvironmentFile=/etc/restic/%I.env
+      AmbientCapabilities=CAP_DAC_READ_SEARCH
+
+      [Install]
+      WantedBy=multi-user.target
+
 - name: create restic-forget-and-prune@.service
   copy:
     owner: root
