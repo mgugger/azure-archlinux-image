@@ -26,13 +26,19 @@
     owner: root
     mode: 0555
 
-# https://github.com/restic/restic/pull/2398
-# Once this is implemented, a B2 app key does not require delete caps anymore
-# b2 create-key --bucket <bucketName> <keyName> listBuckets,readFiles,writeFiles,listFiles
 - name: ensure file exists
   copy:
     content: ""
     dest: /mnt/etc/restic/root.env
+    force: no
+    group: root
+    owner: root
+    mode: 0555
+
+- name: ensure exclude file exists
+  copy:
+    content: ".snapshots/*" # exclude btrfs snapshots
+    dest: /mnt/etc/restic/root.exclude
     force: no
     group: root
     owner: root
@@ -57,7 +63,7 @@
       Environment="HTTPS_PROXY=http://127.0.0.1:8888"
       Type=oneshot
       User=restic
-      ExecStart=/usr/bin/restic backup --files-from /etc/restic/%I.files
+      ExecStart=/usr/bin/restic backup --files-from /etc/restic/%I.files --exclude-file /etc/restic/%I.exclude
       EnvironmentFile=/etc/restic/%I.env
       AmbientCapabilities=CAP_DAC_READ_SEARCH
 
