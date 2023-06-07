@@ -161,6 +161,23 @@
       [Install]
       WantedBy=timers.target
 
+- name: create restic@.timer
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system/restic-no-proxy@.timer
+    content: |
+      [Unit]
+      Description=Run Restic at 10:00
+
+      [Timer]
+      OnCalendar=*-*-* 10:00:00
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+
 - name: create restic-forget-and-prune@.timer
   copy:
     owner: root
