@@ -70,6 +70,28 @@
       [Install]
       WantedBy=multi-user.target
 
+- name: create restic-no-proxy@.service
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system/restic-no-proxy@.service
+    content: |
+      [Unit]
+      Description=Restic backup on %I
+      After=syslog.target
+      After=network-online.target
+
+      [Service]
+      Type=oneshot
+      User=restic
+      ExecStart=/usr/bin/restic backup --files-from /etc/restic/%I.files --exclude-file /etc/restic/%I.exclude
+      EnvironmentFile=/etc/restic/%I.env
+      AmbientCapabilities=CAP_DAC_READ_SEARCH
+
+      [Install]
+      WantedBy=multi-user.target
+
 - name: create restic-check@.service
   copy:
     owner: root
