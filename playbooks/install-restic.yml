@@ -7,7 +7,7 @@
       - /bin/bash
       - -c
       - |
-        pacman -Sy --noconfirm restic
+        pacman -Sy --noconfirm restic rclone
         useradd -m -N -s /usr/sbin/nologin restic
 
 - name: Create a directory if it does not exist
@@ -17,7 +17,19 @@
     group: root
     owner: root
 
-- name: ensure file exists
+- name: ensure restic env file exists
+  copy:
+    content: |
+      RESTIC_REPOSITORY=rest:http://127.0.0.1:33333/restic
+      RESTIC_PASSWORD=TODO
+      RESTIC_PROGRESS_FPS=0.16666
+    dest: /mnt/etc/restic/root.env
+    force: no
+    group: root
+    owner: root
+    mode: 0555
+
+- name: ensure restic file exists
   copy:
     content: ""
     dest: /mnt/etc/restic/root.files
@@ -26,16 +38,7 @@
     owner: root
     mode: 0555
 
-- name: ensure file exists
-  copy:
-    content: ""
-    dest: /mnt/etc/restic/root.env
-    force: no
-    group: root
-    owner: root
-    mode: 0555
-
-- name: ensure exclude file exists
+- name: ensure restic exclude file exists
   copy:
     content: ".snapshots/*" # exclude btrfs snapshots
     dest: /mnt/etc/restic/root.exclude
@@ -52,7 +55,7 @@
     dest: /mnt/etc/systemd/system/restic@.service
     content: |
       [Unit]
-      Description=Restic backup on %I
+      Description=Restic backup on %I through restic only
       After=syslog.target
       After=network-online.target
 
@@ -61,6 +64,8 @@
       Environment="https_proxy=http://127.0.0.1:8888"
       Environment="HTTP_PROXY=http://127.0.0.1:8888"
       Environment="HTTPS_PROXY=http://127.0.0.1:8888"
+      Environment="no_proxy=localhost,127.0.0.1"
+      Environment="NO_PROXY=localhost,127.0.0.1"
       Type=oneshot
       User=restic
       ExecStart=/usr/bin/restic backup --files-from /etc/restic/%I.files --exclude-file /etc/restic/%I.exclude
@@ -70,17 +75,19 @@
       [Install]
       WantedBy=multi-user.target
 
-- name: create restic-no-proxy@.service
+- name: create restic-rclone@.service
   copy:
     owner: root
     group: root
     force: yes
-    dest: /mnt/etc/systemd/system/restic-no-proxy@.service
+    dest: /mnt/etc/systemd/system/restic-rclone@.service
     content: |
       [Unit]
-      Description=Restic backup on %I
+      Description=Restic backup on %I through rclone serving restic rest server on localhost
       After=syslog.target
       After=network-online.target
+      Requires=restic-rclone-serve@%I.service
+      After=restic-rclone-serve@%I.service
 
       [Service]
       Type=oneshot
@@ -88,6 +95,49 @@
       ExecStart=/usr/bin/restic backup --files-from /etc/restic/%I.files --exclude-file /etc/restic/%I.exclude
       EnvironmentFile=/etc/restic/%I.env
       AmbientCapabilities=CAP_DAC_READ_SEARCH
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: create restic-rclone-serve@.service for backing up to rest server served by rclone
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system/restic-rclone-serve@.service
+    content: |
+      [Unit]
+      Description=Rclone serve restic on %I
+      After=syslog.target
+      After=network-online.target
+      BindsTo=restic@%I.service
+
+      [Service]
+      Environment="http_proxy=http://127.0.0.1:8888"
+      Environment="https_proxy=http://127.0.0.1:8888"
+      Environment="HTTP_PROXY=http://127.0.0.1:8888"
+      Environment="HTTPS_PROXY=http://127.0.0.1:8888"
+      Environment="RCLONE_ADDR=127.0.0.1:33333"
+      Environment="RCLONE_APPEND_ONLY=true"
+      Type=simple
+      User=restic
+      ExecStart=/usr/bin/rclone serve restic %I:
+      ExecReload=/bin/kill -USR1 $MAINPID
+
+      ; Use graceful shutdown with a reasonable timeout
+      KillMode=mixed
+      KillSignal=SIGTERM
+      TimeoutStopSec=5s
+
+      LimitNOFILE=1048576
+      LimitNPROC=512
+
+      PrivateTmp=true
+      PrivateDevices=true
+      ProtectSystem=full
+      CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
+      NoNewPrivileges=true
 
       [Install]
       WantedBy=multi-user.target
@@ -173,6 +223,23 @@
 
       [Timer]
       OnCalendar=*-*-* 10:00:00
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+      
+- name: create restic-rclone@.timer
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system/restic-rclone@.timer
+    content: |
+      [Unit]
+      Description=Run Restic at 11:00
+
+      [Timer]
+      OnCalendar=*-*-* 11:00:00
       Persistent=true
 
       [Install]
