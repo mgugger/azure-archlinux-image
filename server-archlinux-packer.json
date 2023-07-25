@@ -45,7 +45,14 @@
     "provisioners": [
         {
   "type": "shell",
-  "inline": ["pacman-key --init && pacman-key --populate && pacman -Sy --noconfirm archlinux-keyring && pacman -Sy --noconfirm ansible"]
+    "environment_vars": [""],
+  "execute_command": ["bash", "-c", "{{.Vars}} {{.Script}}"],
+  "use_linux_pathing": true,
+  "script": "./http/wait-for-keyring.sh"
+},
+        {
+  "type": "shell",
+  "inline": ["pacman -Sy --noconfirm archlinux-keyring && pacman -Sy --noconfirm ansible"]
 },
         {
             "type": "ansible-local",
