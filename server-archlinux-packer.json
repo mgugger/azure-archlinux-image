@@ -46,6 +46,7 @@
         {
             "type": "ansible",
             "user": "root",
+            "use_proxy": false,
             "skip_version_check": true,
             "playbook_file": "playbooks/1_archlinux-server-install-playbook.yml",
             "extra_arguments": [ 
