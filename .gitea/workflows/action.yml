@@ -1,4 +1,4 @@
-name: Gitea Actions Demo
+name: Packer Build
 run-name: ${{ gitea.actor }} is testing out Gitea Actions 🚀
 on: [push]
 
