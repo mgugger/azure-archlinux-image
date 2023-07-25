@@ -22,7 +22,7 @@
             "accelerator": "kvm",
             "iso_url": "https://mirror.puzzle.ch/archlinux/iso/latest/archlinux-2023.07.01-x86_64.iso",
             "iso_checksum": "sha256:1a2c1cdea0118b60525f55ee616e9cd4cf68fe17db906ce3d8e46fd06f9907eb",
-            "headless": false,
+            "headless": true,
             "firmware": "/usr/share/OVMF/x64/OVMF_CODE.fd",
             "cpus": 2,
             "disk_cache": "unsafe",
