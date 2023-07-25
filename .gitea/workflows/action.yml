@@ -1,17 +1,26 @@
-name: Packer Build
-run-name: ${{ gitea.actor }} is testing out Gitea Actions 🚀
-on: [push]
-
+name: packer
+on:
+  push:
+env:
+  PRODUCT_VERSION: "1.8.6" # or: "latest"
 jobs:
-  Explore-Gitea-Actions:
-    runs-on: packer
+  packer:
+    runs-on: ubuntu-latest
+    name: Run Packer
     steps:
-      - name: Check out repository code
+      - name: Checkout
         uses: actions/checkout@v3
-      - run: packer init
-      - run: echo "💡 The ${{ gitea.repository }} repository has been cloned to the runner."
-      - run: echo "🖥️ The workflow is now ready to test your code on the runner."
-      - name: List files in the repository
-        run: |
-          ls ${{ gitea.workspace }}
-      - run: echo "🍏 This job's status is ${{ job.status }}."
+
+      - name: Setup `packer`
+        uses: hashicorp/setup-packer@main
+        id: setup
+        with:
+          version: ${{ env.PRODUCT_VERSION }}
+
+      - name: Run `packer init`
+        id: init
+        run: "packer init ./server-azure-ubuntu-packer.json"
+
+      - name: Run `packer validate`
+        id: validate
+        run: "packer validate ./server-azure-ubuntu-packer.json"
