@@ -8,9 +8,6 @@ jobs:
     runs-on: ubuntu-latest
     name: Run Packer
     steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-
       - name: Clone external repository with subpath
         run: |
           # Replace "EXTERNAL_REPO_URL" with the URL of the external repository and "SUBPATH" with the desired subpath
