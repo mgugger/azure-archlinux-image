@@ -23,3 +23,14 @@ jobs:
           -var "password=${{ secrets.PASSWORD }}" \
           -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \
           ./server-archlinux-packer.json
+
+      - name: Run `packer build`
+        id: build
+        run: | 
+          packer build \
+          -var "username=manuel" \
+          -var "publickey=\"${{ secrets.PUBLIC_KEY }}\"" \
+          -var "storage_account_name=TODO" \
+          -var "password=${{ secrets.PASSWORD }}" \
+          -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \
+          ./server-archlinux-packer.json
