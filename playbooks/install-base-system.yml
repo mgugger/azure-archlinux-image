@@ -1,8 +1,4 @@
 ---
-- name: Pause for 1 minute for pacman-init.service to finish
-  ansible.builtin.pause:
-    minutes: 1
-
 - name: pacstrap base system with {{ kernel }} and apparmor
   command: pacstrap /mnt base {{ kernel }} linux-firmware openssh base-devel apparmor
 
