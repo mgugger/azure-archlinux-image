@@ -27,7 +27,7 @@ jobs:
       - name: Run `packer build`
         id: build
         run: | 
-          packer build \
+          PACKER_LOG=1 packer build \
           -var "username=manuel" \
           -var "publickey=\"${{ secrets.PUBLIC_KEY }}\"" \
           -var "storage_account_name=TODO" \
