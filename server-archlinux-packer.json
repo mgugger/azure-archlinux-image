@@ -45,7 +45,7 @@
     "provisioners": [
         {
   "type": "shell",
-  "inline": ["pacman -Sy archlinux-keyring && pacman -Sy --noconfirm ansible"]
+  "inline": ["pacman -Sy --noconfirm archlinux-keyring && pacman -Sy --noconfirm ansible"]
 },
         {
             "type": "ansible-local",
