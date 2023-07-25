@@ -54,6 +54,7 @@
         {
             "type": "ansible-local",
             "playbook_file": "playbooks/1_archlinux-server-install-playbook.yml",
+            "playbook_dir": "playbooks",
             "extra_arguments": [ 
                 "--extra-vars", 
                 "\"username={{user `username`}} password={{user `password`}} user_ssh_public_key={{user `publickey`}} random_seed={{user `random_seed_for_oath`}}\"", "-v"
