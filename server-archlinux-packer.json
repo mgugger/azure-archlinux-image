@@ -44,6 +44,10 @@
     ],
     "provisioners": [
         {
+  "type": "shell",
+  "inline": ["pacman -Sy --noconfirm ansible"]
+},
+        {
             "type": "ansible-local",
             "playbook_file": "playbooks/1_archlinux-server-install-playbook.yml",
             "extra_arguments": [ 
