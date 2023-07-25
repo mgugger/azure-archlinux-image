@@ -45,9 +45,6 @@
     "provisioners": [
         {
   "type": "shell",
-    "environment_vars": [""],
-  "execute_command": ["bash", "-c", "{{.Vars}} {{.Script}}"],
-  "use_linux_pathing": true,
   "script": "./http/wait-for-keyring.sh"
 },
         {
