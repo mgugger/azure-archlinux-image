@@ -22,10 +22,11 @@ jobs:
       - name: Run `packer validate`
         id: validate
         run: | 
+          cd azure-archlinux-image
           packer validate \
           -var "username=manuel" \
-          -var 'publickey="${{ secrets.PUBLIC_KEY }}"' \
+          -var "publickey=\"${{ secrets.PUBLIC_KEY }}\"" \
           -var "storage_account_name=TODO" \
           -var "password=${{ secrets.PASSWORD }}" \
           -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \
-          ./server-azure-ubuntu-packer.json"
+          ./server-azure-ubuntu-packer.json
