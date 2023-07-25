@@ -61,7 +61,7 @@
 
   - include_tasks: install-tinyproxy.yml
 
-  - indclude_tasks: install-vector.yml
+  - include_tasks: install-vector.yml
 
   - include_tasks: set-security-improvements.yml
 
