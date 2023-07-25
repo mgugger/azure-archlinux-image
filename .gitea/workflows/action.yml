@@ -22,7 +22,6 @@ jobs:
       - name: Run `packer validate`
         id: validate
         run: | 
-          cd azure-archlinux-image
           packer validate \
           -var "username=manuel" \
           -var "publickey=\"${{ secrets.PUBLIC_KEY }}\"" \
