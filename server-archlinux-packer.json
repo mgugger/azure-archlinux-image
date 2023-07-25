@@ -52,9 +52,7 @@
                 "--scp-extra-args", "'-O'",
                 "--extra-vars", "username={{user `username`}} password={{user `password`}} user_ssh_public_key={{user `publickey`}} random_seed={{user `random_seed_for_oath`}}", "-v"
             ],
-            "ansible_ssh_extra_args": [
-                "-oHostKeyAlgorithms=+ssh-rsa -oPubkeyAcceptedKeyTypes=+ssh-rsa"
-            ]
+            "ansible_ssh_extra_args": []
         }
     ]
 }
