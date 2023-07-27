@@ -8,6 +8,17 @@
       - |
         pacman -Sy --noconfirm vector
 
+- name: Ensure group "vector" exists
+  ansible.builtin.group:
+    name: vector
+    state: present
+
+- name: Add the user 'vector' a primary group of 'vector'
+  ansible.builtin.user:
+    name: vector
+    group: vector
+    home: /var/lib/vector
+
 - name: Create a directory if it does not exist
   ansible.builtin.file:
     path: /mnt/etc/vector
@@ -44,12 +55,32 @@
     group: root
     owner: root
 
+- name: Create a directory if it does not exist
+  ansible.builtin.file:
+    path: /mnt/usr/lib/systemd/system/hardened-vector.service.d
+    state: directory
+    group: root
+    owner: root
+
 - name: create http_proxy.conf
   copy:
     owner: root
     group: root
     force: yes
     dest: /mnt/usr/lib/systemd/system/vector.service.d/http_proxy.conf
+    content: |
+      [Service]
+      Environment="http_proxy=http://127.0.0.1:8888"
+      Environment="https_proxy=http://127.0.0.1:8888"
+      Environment="HTTP_PROXY=http://127.0.0.1:8888"
+      Environment="HTTPS_PROXY=http://127.0.0.1:8888"
+
+- name: create http_proxy.conf
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/usr/lib/systemd/system/hardened-vector.service.d/http_proxy.conf
     content: |
       [Service]
       Environment="http_proxy=http://127.0.0.1:8888"
