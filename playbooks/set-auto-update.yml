@@ -134,6 +134,7 @@
 
 ### Snap-pac
 - name: Install snap-pac to create btrfs snapshots after/before pacman updates
+  ignore_errors: true
   command: 
     argv:
       - /usr/bin/arch-chroot
@@ -141,7 +142,7 @@
       - /bin/bash
       - -c
       - |
-        pacman -Sy --noconfirm snap-pac || true
+        pacman -Sy --noconfirm snap-pac
         systemctl enable snapper-timeline.timer
         systemctl enable snapper-cleanup.timer
 
