@@ -23,7 +23,7 @@ jobs:
           -var "storage_account_name=$IMAGE_STORAGE_ACCOUNT" \
           -var "password=${{ secrets.PASSWORD }}" \
           -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \
-          -var "resource_group_for_image=$IMAGE_RESOURCE_GROUP"
+          -var "resource_group_for_image=$IMAGE_RESOURCE_GROUP" \
           ./server-archlinux-packer.json
 
       - name: Run `packer build`
@@ -35,5 +35,5 @@ jobs:
           -var "storage_account_name=$IMAGE_STORAGE_ACCOUNT" \
           -var "password=${{ secrets.PASSWORD }}" \
           -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \
-          -var "resource_group_for_image=$IMAGE_RESOURCE_GROUP"
+          -var "resource_group_for_image=$IMAGE_RESOURCE_GROUP" \
           ./server-archlinux-packer.json
