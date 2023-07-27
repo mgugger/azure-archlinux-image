@@ -2,7 +2,7 @@ name: packer
 on:
   push:
 env:
-  PRODUCT_VERSION: "1.8.6" # or: "latest"
+  IMAGE_STORAGE_ACCOUNT: "mdgcorpstorage"
 jobs:
   packer:
     runs-on: self-hosted
@@ -30,7 +30,7 @@ jobs:
           PACKER_LOG=1 packer build \
           -var "username=manuel" \
           -var "publickey=\"${{ secrets.PUBLIC_KEY }}\"" \
-          -var "storage_account_name=TODO" \
+          -var "storage_account_name=$IMAGE_STORAGE_ACCOUNT" \
           -var "password=${{ secrets.PASSWORD }}" \
           -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \
           ./server-archlinux-packer.json

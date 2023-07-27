@@ -14,7 +14,10 @@
                     "-m",
                     "2048M"
                 ],
-                [ "-boot",  "menu=on,splash-time=10000" ]
+                [
+                    "-boot",
+                    "menu=on,splash-time=10000"
+                ]
             ],
             "output_directory": "./packer_output/qemu",
             "disk_size": "4000M",
@@ -44,20 +47,39 @@
     ],
     "provisioners": [
         {
-  "type": "shell",
-  "script": "./http/wait-for-keyring.sh"
-},
+            "type": "shell",
+            "script": "./http/wait-for-keyring.sh"
+        },
         {
-  "type": "shell",
-  "inline": ["pacman -Sy --noconfirm archlinux-keyring && pacman -Sy --noconfirm ansible"]
-},
+            "type": "shell",
+            "inline": [
+                "pacman -Sy --noconfirm archlinux-keyring && pacman -Sy --noconfirm ansible"
+            ]
+        },
         {
             "type": "ansible-local",
             "playbook_file": "playbooks/1_archlinux-server-install-playbook.yml",
             "playbook_dir": "playbooks",
-            "extra_arguments": [ 
-                "--extra-vars", 
-                "\"username={{user `username`}} password={{user `password`}} user_ssh_public_key={{user `publickey`}} random_seed={{user `random_seed_for_oath`}}\"", "-v"
+            "extra_arguments": [
+                "--extra-vars",
+                "\"username={{user `username`}} password={{user `password`}} user_ssh_public_key={{user `publickey`}} random_seed={{user `random_seed_for_oath`}}\"",
+                "-v"
+            ]
+        }
+    ],
+    "post-processors": [
+        {
+            "type": "shell-local",
+            "inline": [
+                "set -e; qemu-img convert -f raw -O vpc -o subformat=fixed,force_size ./packer_output/qemu/packer-qemu ./packer_output/archlinux.vhd",
+                "azcopy login --identity",
+                "azcopy copy ./packer_output/archlinux.vhd https://{{user `storage_account_name`}}.blob.core.windows.net/archlinux/",
+                "az login --identity",
+                "az image create --source https://{{user `storage_account_name`}}.blob.core.windows.net/archlinux/archlinux.vhd --name archlinux -g vm-imagebuilder --os-type linux --hyper-v-generation V2 --os-disk-caching ReadOnly",
+                "echo \"random seed is: {{user `random_seed_for_oath` }} and base32 $(oathtool -v --totp -d 6 {{user `random_seed_for_oath` }} | grep '^Base32 secret:' | sed 's/^.*: //')\"",
+                "echo \"QR Code for oath otp is\"",
+                "qrencode -t UTF8 \"otpauth://totp/Archlinux:{{user `username` }}@archlinux?secret=$(oathtool -v --totp -d 6 {{user `random_seed_for_oath` }} | grep \"^Base32 secret:\" | cut -d \" \" -f3)&issuer={{user `username`}}\"",
+                "rm -rf packer_output/"
             ]
         }
     ]
