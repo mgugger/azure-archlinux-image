@@ -18,8 +18,8 @@ jobs:
         run: | 
           packer validate \
           -var "username=manuel" \
-          -var "publickey=\"${{ secrets.PUBLIC_KEY }}\"" \
-          -var "storage_account_name=TODO" \
+          -var "ssh_authorized_keys_bas64=\"${{ secrets.SSH_AUTHORIZED_KEYS_BASE64 }}\"" \
+          -var "storage_account_name=$IMAGE_STORAGE_ACCOUNT" \
           -var "password=${{ secrets.PASSWORD }}" \
           -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \
           ./server-archlinux-packer.json
@@ -29,7 +29,7 @@ jobs:
         run: | 
           PACKER_LOG=1 packer build \
           -var "username=manuel" \
-          -var "publickey=\"${{ secrets.PUBLIC_KEY }}\"" \
+          -var "ssh_authorized_keys_bas64=\"${{ secrets.SSH_AUTHORIZED_KEYS_BASE64 }}\"" \
           -var "storage_account_name=$IMAGE_STORAGE_ACCOUNT" \
           -var "password=${{ secrets.PASSWORD }}" \
           -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \

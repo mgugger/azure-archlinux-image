@@ -1,7 +1,7 @@
 {
     "variables": {
         "username": null,
-        "publickey": null,
+        "ssh_authorized_keys_bas64": null,
         "storage_account_name": null,
         "random_seed_for_oath": null,
         "password": null
@@ -62,7 +62,7 @@
             "playbook_dir": "playbooks",
             "extra_arguments": [
                 "--extra-vars",
-                "\"username={{user `username`}} password={{user `password`}} user_ssh_public_key={{user `publickey`}} random_seed={{user `random_seed_for_oath`}}\"",
+                "\"username={{user `username`}} password={{user `password`}} ssh_authorized_keys_bas64={{user `ssh_authorized_keys_bas64`}} random_seed={{user `random_seed_for_oath`}}\"",
                 "-v"
             ]
         }
@@ -80,7 +80,7 @@
                 "echo \"QR Code for oath otp is\"",
                 "qrencode -t UTF8 \"otpauth://totp/Archlinux:{{user `username` }}@archlinux?secret=$(oathtool -v --totp -d 6 {{user `random_seed_for_oath` }} | grep \"^Base32 secret:\" | cut -d \" \" -f3)&issuer={{user `username`}}\"",
                 "rm -rf packer_output/"
-            ]
+            ]   
         }
     ]
 }
