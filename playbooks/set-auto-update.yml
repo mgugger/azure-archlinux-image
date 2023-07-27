@@ -7,7 +7,7 @@
       - /bin/bash
       - -c
       - |
-        curl --silent https://raw.githubusercontent.com/cmuench/pacman-auto-update/master/install.sh | bash
+        curl --silent https://raw.githubusercontent.com/cmuench/pacman-auto-update/master/install.sh | sudo -u {{ username }} bash -
         systemctl enable pacman-auto-update.timer
 
 - name: Create /usr/lib/systemd/system/pacman-auto-update.service.d/ directory
