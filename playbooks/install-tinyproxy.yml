@@ -124,5 +124,7 @@
         firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p tcp -m tcp -d 168.63.129.16 --dport=32526 -j ACCEPT
         # SMTP
         firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p tcp -m tcp --dport=587 -j ACCEPT
+        # DNS over TLS
+        firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p tcp -m tcp -d 9.9.9.9 --dport=853 -j ACCEPT
         # Drop all other outgoing traffic
         firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 2 -o eth0 -j DROP
