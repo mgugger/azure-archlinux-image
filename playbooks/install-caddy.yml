@@ -22,6 +22,12 @@
     content: |
       # Replace domain with the fqdn during cloud-init
       <domain> {
+        @insecureadmin {
+          not remote_ip 192.168.0.0/16 172.16.0.0/12 10.0.0.0/8
+          path /admin*
+        }
+        respond @insecureadmin "Access Denied" 403
+        
         reverse_proxy /admin/* localhost:9090 {
           transport http {
               tls_insecure_skip_verify
