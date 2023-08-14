@@ -8,6 +8,7 @@
       - -c
       - |
         bootctl install
+        systemctl enable systemd-boot-update
 
 - name: set loader.conf loader entry
   copy:
