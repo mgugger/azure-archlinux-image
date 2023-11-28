@@ -6,7 +6,7 @@ env:
   IMAGE_RESOURCE_GROUP: "mdgcorp-storage"
 jobs:
   packer:
-    runs-on: archlinux-build
+    runs-on: self-hosted
     name: Run Packer
     steps:
       - name: Checkout
