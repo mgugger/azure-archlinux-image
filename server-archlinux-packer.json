@@ -25,7 +25,7 @@
             "format": "raw",
             "accelerator": "kvm",
             "iso_url": "https://mirror.puzzle.ch/archlinux/iso/latest/archlinux-x86_64.iso",
-            "iso_checksum": "sha256:3bf1287333de5c26663b70a17ce7573f15dc60780b140cbbd1c720338c0abac5",
+            "iso_checksum": "none",
             "headless": true,
             "firmware": "/usr/share/OVMF/x64/OVMF_CODE.fd",
             "cpus": 2,
