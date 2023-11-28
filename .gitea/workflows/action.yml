@@ -2,8 +2,8 @@ name: packer
 on:
   push:
 env:
-  IMAGE_STORAGE_ACCOUNT: "mdgcorpstorage"
-  IMAGE_RESOURCE_GROUP: "mdgcorp-storage"
+  IMAGE_STORAGE_ACCOUNT: "mdgvmimages"
+  IMAGE_RESOURCE_GROUP: "storage"
 jobs:
   packer:
     runs-on: self-hosted
