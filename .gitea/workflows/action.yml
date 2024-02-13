@@ -18,6 +18,7 @@ jobs:
         id: validate
         run: |
           packer plugins install github.com/hashicorp/qemu
+          packer plugins install github.com/hashicorp/ansible
           packer validate \
           -var "username=manuel" \
           -var "ssh_authorized_keys_bas64=\"${{ secrets.SSH_AUTHORIZED_KEYS_BASE64 }}\"" \
