@@ -69,6 +69,9 @@
     force: yes
     dest: /mnt/usr/lib/systemd/system/vector.service.d/http_proxy.conf
     content: |
+      [Unit]
+      OnFailure=notify-email@vector.service
+
       [Service]
       Environment="http_proxy=http://127.0.0.1:8888"
       Environment="https_proxy=http://127.0.0.1:8888"

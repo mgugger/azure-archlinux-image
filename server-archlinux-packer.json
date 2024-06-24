@@ -1,6 +1,11 @@
 {
     "variables": {
         "username": null,
+        "notification_email": null,
+        "smtp_user": null,
+        "smtp_pass": null,
+        "smtp_server_incl_port": null,
+        "smtp_sender": null,
         "ssh_authorized_keys_bas64": null,
         "storage_account_name": null,
         "random_seed_for_oath": null,
@@ -63,7 +68,7 @@
             "playbook_dir": "playbooks",
             "extra_arguments": [
                 "--extra-vars",
-                "\"username={{user `username`}} password={{user `password`}} ssh_authorized_keys_bas64={{user `ssh_authorized_keys_bas64`}} random_seed={{user `random_seed_for_oath`}}\"",
+                "\"username={{user `username`}} smtp_user={{user `smtp_user`}} smtp_pass={{user `smtp_pass`}} smtp_sender={{user `smtp_sender`}} smtp_server_incl_port={{user `smtp_server_incl_port`}} password={{user `password`}} notification_email={{user `notification_email`}} ssh_authorized_keys_bas64={{user `ssh_authorized_keys_bas64`}} random_seed={{user `random_seed_for_oath`}}\"",
                 "-v"
             ]
         }

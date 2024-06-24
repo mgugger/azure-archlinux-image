@@ -43,6 +43,8 @@
 
   - include_tasks: set-systemd-resolved.yml
 
+  - include_tasks: notify-email-service.yml
+
   - include_tasks: install-cloud-init.yml
 
   - include_tasks: install-firewalld.yml
