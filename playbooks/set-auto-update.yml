@@ -155,3 +155,4 @@
     - -c
     - |
       snapper --no-dbus -c root create-config /
+      sudo snapper setup-quota
