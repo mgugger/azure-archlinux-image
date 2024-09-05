@@ -31,6 +31,11 @@ jobs:
           -var "luks_passphrase=${{ secrets.LUKS_PASSPHRASE }}" \
           ./server-archlinux-packer.pkr.hcl
 
+      - name: Run `packer validate`
+        id: validate
+        run: |
+          packer init
+
       - name: Run `packer build`
         id: build
         run: | 
