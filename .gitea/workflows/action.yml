@@ -14,8 +14,6 @@ jobs:
       - name: Run `packer validate`
         id: validate
         run: |
-          packer plugins install github.com/hashicorp/qemu
-          packer plugins install github.com/hashicorp/ansible
           packer validate \
           -var "username=\"${{ vars.USERNAME }}\"" \
           -var "smtp_server_incl_port=\"${{ vars.SMTP_SERVER_INCL_PORT }}\"" \
@@ -39,7 +37,7 @@ jobs:
       - name: Run `packer build`
         id: build
         run: | 
-          PACKER_LOG=1 packer build \
+          packer build \
           -var "username=\"${{ vars.USERNAME }}\"" \
           -var "smtp_server_incl_port=\"${{ vars.SMTP_SERVER_INCL_PORT }}\"" \
           -var "smtp_user=\"${{ vars.SMTP_USER }}\"" \
