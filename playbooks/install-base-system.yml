@@ -54,7 +54,7 @@
         echo -e "{{root_pw}}\n{{root_pw}}" | passwd
         pacman -Sy --noconfirm btrfs-progs nano python sudo wireguard-tools
         mkdir -p /efi/EFI/Linux
-        mkinitcpio -P {{ kernel }} || true
+        mkinitcpio -P {{ kernel }}
 
 ### TODO: Sign the UK with sbctl
 ### See regional availability: https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-secure-boot-custom-uefi

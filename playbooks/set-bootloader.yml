@@ -42,9 +42,9 @@
     content: |
       ALL_kver="/boot/vmlinuz-linux"
       PRESETS=('default' 'fallback')
-      default_uki="esp/EFI/Linux/arch-linux.efi"
+      default_uki="/efi/EFI/Linux/arch-linux.efi"
       default_options=""
-      fallback_uki="esp/EFI/Linux/arch-linux-fallback.efi"
+      fallback_uki="/efi/EFI/Linux/arch-linux-fallback.efi"
       fallback_options="-S autodetect"
 
 - name: set loader.conf loader entry
