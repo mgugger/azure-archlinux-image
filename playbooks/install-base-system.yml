@@ -39,6 +39,11 @@
       HOOKS=(base systemd autodetect modconf keyboard sd-vconsole block sd-encrypt filesystems fsck btrfs)
       COMPRESSION="zstd"
 
+- name: Create /etc/cmdline.d directory
+  ansible.builtin.file:
+    path: /mnt/etc/cmdline.d
+    state: directory
+
 - name: set cmdline root conf for UKI
   copy:
     owner: root

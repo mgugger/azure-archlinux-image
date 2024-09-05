@@ -10,11 +10,6 @@
         bootctl install
         systemctl enable systemd-boot-update
 
-- name: Create /etc/cmdline.d directory
-  ansible.builtin.file:
-    path: /mnt/etc/cmdline.d
-    state: directory
-
 - name: set loader.conf loader entry
   copy:
     owner: root
