@@ -10,6 +10,11 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
+      
+      - name: Run `packer init`
+        id: init
+        run: |
+          packer init ./server-archlinux-packer.pkr.hcl
 
       - name: Run `packer validate`
         id: validate
@@ -28,11 +33,6 @@ jobs:
           -var "resource_group_for_image=\"${{ vars.IMAGE_RESOURCE_GROUP }}\"" \
           -var "luks_passphrase=\"${{ secrets.LUKS_PASSPHRASE }}\"" \
           ./server-archlinux-packer.pkr.hcl
-
-      - name: Run `packer init`
-        id: init
-        run: |
-          packer init ./server-archlinux-packer.pkr.hcl
 
       - name: Run `packer build`
         id: build
