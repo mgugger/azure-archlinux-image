@@ -1,7 +1,4 @@
 ---
-- name: pacstrap base system with {{ kernel }} and apparmor
-  command: pacman -S --noconfirm systemd-ukify sbctl
-
 - name: install systemd-boot to esp
   command:
     argv:
@@ -12,9 +9,6 @@
       - |
         bootctl install
         systemctl enable systemd-boot-update
-
-### TODO: Sign the bootloader with sbctl
-### See regional availability: https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-secure-boot-custom-uefi
 
 - name: Create /usr/lib/systemd/system/caddy.service.d directory
   ansible.builtin.file:

@@ -47,6 +47,7 @@
       - /bin/bash
       - -c
       - |
+        pacman -S --noconfirm systemd-ukify sbctl
         ln -sf /usr/share/zoneinfo/CET /etc/localtime
         hwclock --systohc
         locale-gen
@@ -54,6 +55,9 @@
         pacman -Sy --noconfirm btrfs-progs nano python sudo wireguard-tools
         mkdir -p /efi/EFI/Linux
         mkinitcpio -P {{ kernel }} || true
+
+### TODO: Sign the UK with sbctl
+### See regional availability: https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-secure-boot-custom-uefi
 
 - name: enable sshd
   command:
