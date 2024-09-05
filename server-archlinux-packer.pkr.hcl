@@ -90,13 +90,8 @@ build {
     script = "./http/wait-for-keyring.sh"
   }
 
-  provisioner "shell" {
-    inline = ["pacman -Syu --noconfirm archlinux-keyring && pacman -Sy --noconfirm ansible", "ansible-playbook --version || echo 'Ansible installation failed'"]
-  }
-
-  provisioner "ansible-local" {
+  provisioner "ansible" {
     extra_arguments = ["--extra-vars", "\"username=${var.username} luks_passphrase=${var.luks_passphrase} password=${var.password} smtp_user=${var.smtp_user} smtp_pass=${var.smtp_pass} smtp_sender=${var.smtp_sender} smtp_server_incl_port=${var.smtp_server_incl_port} password=${var.password} notification_email=${var.notification_email} ssh_authorized_keys_base64=${var.ssh_authorized_keys_base64} random_seed=${var.random_seed_for_oath}\"", "-v"]
-    playbook_dir    = "playbooks"
     playbook_file   = "playbooks/1_archlinux-server-install-playbook.yml"
   }
 
