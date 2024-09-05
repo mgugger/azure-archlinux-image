@@ -11,10 +11,6 @@ packer {
   }
 }
 
-# All generated input variables will be of 'string' type as this is how Packer JSON
-# views them; you can change their type later on. Read the variables type
-# constraints documentation
-# https://www.packer.io/docs/templates/hcl_templates/variables#type-constraints for more info.
 variable "password" {
   type = string
 }
