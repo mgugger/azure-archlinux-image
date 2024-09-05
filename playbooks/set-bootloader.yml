@@ -1,4 +1,7 @@
 ---
+- name: pacstrap base system with {{ kernel }} and apparmor
+  command: pacman -S --noconfirm systemd-ukify sbctl
+
 - name: install systemd-boot to esp
   command:
     argv:
@@ -10,38 +13,78 @@
         bootctl install
         systemctl enable systemd-boot-update
 
+### TODO: Sign the bootloader with sbctl
+### See regional availability: https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-secure-boot-custom-uefi
+
+- name: Create /usr/lib/systemd/system/caddy.service.d directory
+  ansible.builtin.file:
+    path: /mnt/etc/cmdline.d
+    state: directory
+
+- name: set cmdline root conf for UKI
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/cmdline.d/root.conf
+    content: |
+      root="LABEL={{ root_filesystem_label }}" rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 bgrt_disable
+
+- name: set cmdline security conf for UKI
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/cmdline.d/security.conf
+    content: |
+      lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+
+- name: set /etc/mkinitcpio.d/linux.preset
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/mkinitcpio.d/linux.preset
+    content: |
+      ALL_kver="/boot/vmlinuz-linux"
+      PRESETS=('default' 'fallback')
+      default_uki="esp/EFI/Linux/arch-linux.efi"
+      default_options=""
+      fallback_uki="esp/EFI/Linux/arch-linux-fallback.efi"
+      fallback_options="-S autodetect"
+
 - name: set loader.conf loader entry
   copy:
     owner: root
     group: root
     force: yes
-    dest: /mnt/boot/loader/loader.conf
+    dest: /mnt/efi/loader/loader.conf
     content: |
       default  arch.conf
       timeout  5
       console-mode max
       editor   no
 
-- name: set arch.conf loader entry
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /mnt/boot/loader/entries/arch.conf
-    content: |
-      title   Arch Linux
-      linux   /vmlinuz-{{ kernel }}
-      initrd  /initramfs-{{ kernel }}.img
-      options root="LABEL={{ root_filesystem_label }}" rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+# - name: set arch.conf loader entry
+#   copy:
+#     owner: root
+#     group: root
+#     force: yes
+#     dest: /mnt/boot/loader/entries/arch.conf
+#     content: |
+#       title   Arch Linux
+#       linux   /vmlinuz-{{ kernel }}
+#       initrd  /initramfs-{{ kernel }}.img
+#       options root="LABEL={{ root_filesystem_label }}" rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
 
-- name: set arch-fallback.conf loader entry
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /mnt/boot/loader/entries/arch-fallback.conf
-    content: |
-      title   Arch Linux (fallback initramfs)
-      linux   /vmlinuz-{{ kernel }}
-      initrd  /initramfs-{{ kernel }}-fallback.img
-      options root="LABEL={{ root_filesystem_label }}" rootflags=subvol=@ rw console=tty0 console=ttyS0,115200
+# - name: set arch-fallback.conf loader entry
+#   copy:
+#     owner: root
+#     group: root
+#     force: yes
+#     dest: /mnt/boot/loader/entries/arch-fallback.conf
+#     content: |
+#       title   Arch Linux (fallback initramfs)
+#       linux   /vmlinuz-{{ kernel }}
+#       initrd  /initramfs-{{ kernel }}-fallback.img
+#       options root="LABEL={{ root_filesystem_label }}" rootflags=subvol=@ rw console=tty0 console=ttyS0,115200

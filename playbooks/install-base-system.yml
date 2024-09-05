@@ -36,7 +36,7 @@
       MODULES=(hv_storvsc hv_vmbus)
       BINARIES=()
       FILES=()
-      HOOKS=(base systemd autodetect modconf block filesystems fsck btrfs)
+      HOOKS=(base systemd autodetect modconf keyboard sd-vconsole block sd-encrypt filesystems fsck btrfs)
       COMPRESSION="zstd"
 
 - name: Configure System
@@ -52,7 +52,8 @@
         locale-gen
         echo -e "{{root_pw}}\n{{root_pw}}" | passwd
         pacman -Sy --noconfirm btrfs-progs nano python sudo wireguard-tools
-        mkinitcpio -P || true
+        mkdir -p /efi/EFI/Linux
+        mkinitcpio -P {{ kernel }} || true
 
 - name: enable sshd
   command:

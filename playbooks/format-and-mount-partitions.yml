@@ -2,7 +2,7 @@
 - name: Format root partition with btrfs
   when: not root_mounted
   filesystem: 
-    dev: "{{ install_device_name }}{{ root_partition_number }}"
+    dev: "/dev/mapper/{{ luks_root_name}}"
     fstype: btrfs
     force: yes
 
@@ -10,12 +10,12 @@
   when: not root_mounted
   mount:
     path: "/mnt"
-    src: "{{ install_device_name }}{{ root_partition_number }}"
+    src: "/dev/mapper/{{ luks_root_name}}"
     state: mounted
     fstype: btrfs
     opts: compress=zstd:{{ zstd_compression }},noatime,discard=async,autodefrag
 
-- name: create btrfs subvolumes
+- name: create btrfs subvolumes and unmount fi
   shell: | 
     btrfs filesystem label /mnt/ {{ root_filesystem_label }}
     btrfs su cr /mnt/@
@@ -31,7 +31,7 @@
 - name: Mount subvol @ as root partition
   mount:
     path: "/mnt"
-    src: "{{ install_device_name }}{{ root_partition_number }}"
+    src: "/dev/mapper/{{ luks_root_name}}"
     state: mounted
     fstype: btrfs
     opts: defaults,compress=zstd:{{ zstd_compression }},noatime,discard=async,autodefrag,subvol=@
@@ -40,8 +40,10 @@
   command: mkdir -p /mnt/{{ item }}
   loop:
     - home
+    - efi
     - root
     - srv
+    - boot
     - var/log
     - var/cache/
     - var/tmp
@@ -49,7 +51,7 @@
 - name: Mount home subvol partition
   mount:
     path: "/mnt/home"
-    src: "{{ install_device_name }}{{ root_partition_number }}"
+    src: "/dev/mapper/{{ luks_root_name}}"
     state: mounted
     fstype: btrfs
     opts: defaults,nosuid,nodev,compress=zstd:{{ zstd_compression }},noatime,discard=async,autodefrag,subvol=@home
@@ -57,7 +59,7 @@
 - name: Mount root subvol partition
   mount:
     path: "/mnt/root"
-    src: "{{ install_device_name }}{{ root_partition_number }}"
+    src: "/dev/mapper/{{ luks_root_name}}"
     state: mounted
     fstype: btrfs
     opts: defaults,compress=zstd:{{ zstd_compression }},noatime,discard=async,autodefrag,subvol=@root
@@ -65,7 +67,7 @@
 - name: Mount srv subvol partition
   mount:
     path: "/mnt/srv"
-    src: "{{ install_device_name }}{{ root_partition_number }}"
+    src: "/dev/mapper/{{ luks_root_name}}"
     state: mounted
     fstype: btrfs
     opts: defaults,compress=zstd:{{ zstd_compression }},noatime,discard=async,autodefrag,subvol=@srv
@@ -73,7 +75,7 @@
 - name: Mount /var/log subvol partition
   mount:
     path: "/mnt/var/log"
-    src: "{{ install_device_name }}{{ root_partition_number }}"
+    src: "/dev/mapper/{{ luks_root_name}}"
     state: mounted
     fstype: btrfs
     opts: defaults,nosuid,noexec,nodev,compress=zstd:{{ zstd_compression }},noatime,discard=async,autodefrag,subvol=@log
@@ -81,7 +83,7 @@
 - name: Mount /var/cache subvol partition
   mount:
     path: "/mnt/var/cache"
-    src: "{{ install_device_name }}{{ root_partition_number }}"
+    src: "/dev/mapper/{{ luks_root_name}}"
     state: mounted
     fstype: btrfs
     opts: defaults,compress=zstd:{{ zstd_compression }},noatime,discard=async,autodefrag,subvol=@cache
@@ -89,7 +91,7 @@
 - name: Mount /var/tmp subvol partition
   mount:
     path: "/mnt/var/tmp"
-    src: "{{ install_device_name }}{{ root_partition_number }}"
+    src: "/dev/mapper/{{ luks_root_name}}"
     state: mounted
     fstype: btrfs
     opts: defaults,compress=zstd:{{ zstd_compression }},noatime,nodev,nosuid,noexec,discard=async,autodefrag,subvol=@vartmp
@@ -99,9 +101,9 @@
     path: /mnt/boot
     state: directory
 
-- name: Mount boot partition
+- name: Mount efi partition
   mount:
-    path: "/mnt/boot"
+    path: "/mnt/efi"
     src: "{{ install_device_name }}1"
     state: mounted
     fstype: vfat

@@ -1,7 +1,8 @@
 ---
-- name: set root partition for uefi
+- name: set root partition
   set_fact:
     root_partition_number: "2"
+    luks_root_name: "arch_root"
 
 - name: Label {{ install_device_name }} as gpt
   when: not root_mounted
@@ -21,6 +22,13 @@
     part_end: 512MB
     fs_type: fat32
 
+- name: Format efi boot partition
+  when: not boot_mounted
+  filesystem: 
+    dev: "{{ install_device_name }}1"
+    fstype: vfat
+    force: yes
+
 - name: Create btrfs partition on uefi
   when: not root_mounted
   community.general.parted:
@@ -33,9 +41,14 @@
     part_end: 100%
     fs_type: btrfs
 
-- name: Format efi boot partition
-  when: not boot_mounted
-  filesystem: 
-    dev: "{{ install_device_name }}1"
-    fstype: vfat
-    force: yes
+- name: Set the partition type GUID to Linux root (x86-64) using sgdisk
+  command: "sgdisk --typecode=2:4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709 {{ install_device_name }}"
+
+- name: Create LUKS container with a passphrase
+  community.crypto.luks_device:
+    device: "{{ install_device_name }}{{ root_partition_number }}"
+    state: "present"
+    passphrase: "{{ luks_passphrase }}"
+    type: "luks2"
+    state: "opened"
+    name: "{{ luks_root_name }}"

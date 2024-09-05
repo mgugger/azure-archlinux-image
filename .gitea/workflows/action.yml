@@ -1,9 +1,6 @@
 name: packer
 on:
   push:
-env:
-  IMAGE_STORAGE_ACCOUNT: "mdgcorpvmimages"
-  IMAGE_RESOURCE_GROUP: "mdgcorp_storage"
 jobs:
   packer:
     runs-on: self-hosted
@@ -22,11 +19,12 @@ jobs:
           packer validate \
           -var "username=manuel" \
           -var "ssh_authorized_keys_bas64=\"${{ secrets.SSH_AUTHORIZED_KEYS_BASE64 }}\"" \
-          -var "storage_account_name=$IMAGE_STORAGE_ACCOUNT" \
+          -var "storage_account_name=${{ vars.IMAGE_STORAGE_ACCOUNT }}" \
           -var "password=${{ secrets.PASSWORD }}" \
           -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \
-          -var "resource_group_for_image=$IMAGE_RESOURCE_GROUP" \
-          ./server-archlinux-packer.json
+          -var "resource_group_for_image=${{ vars.IMAGE_RESOURCE_GROUP }}" \
+          -var "luks_passphrase=${{ secrets.LUKS_PASSPHRASE }}" \
+          ./server-archlinux-packer.pkr.hcl
 
       - name: Run `packer build`
         id: build
@@ -34,8 +32,9 @@ jobs:
           PACKER_LOG=1 packer build \
           -var "username=manuel" \
           -var "ssh_authorized_keys_bas64=\"${{ secrets.SSH_AUTHORIZED_KEYS_BASE64 }}\"" \
-          -var "storage_account_name=$IMAGE_STORAGE_ACCOUNT" \
+          -var "storage_account_name=${{ vars.IMAGE_STORAGE_ACCOUNT }}" \
           -var "password=${{ secrets.PASSWORD }}" \
           -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \
-          -var "resource_group_for_image=$IMAGE_RESOURCE_GROUP" \
-          ./server-archlinux-packer.json
+          -var "resource_group_for_image=${{ vars.IMAGE_RESOURCE_GROUP }}" \
+          -var "luks_passphrase=${{ secrets.LUKS_PASSPHRASE }}" \
+          ./server-archlinux-packer.pkr.hcl
