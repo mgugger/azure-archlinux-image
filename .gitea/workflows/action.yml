@@ -17,18 +17,18 @@ jobs:
           packer plugins install github.com/hashicorp/qemu
           packer plugins install github.com/hashicorp/ansible
           packer validate \
-          -var "username=manuel" \
-          -var "smtp_server_incl_port=smtp.gmail.com:587" \
+          -var "username=\"${{ vars.USERNAME }}\"" \
+          -var "smtp_server_incl_port=\"${{ vars.SMTP_SERVER_INCL_PORT }}\"" \
           -var "smtp_user=\"${{ secrets.SMTP_USER }}\"" \
           -var "smtp_pass=\"${{ secrets.SMTP_PASS }}\"" \
           -var "smtp_sender=\"${{ secrets.SMTP_SENDER }}\"" \
           -var "notification_email=\"${{ vars.NOTIFICATION_EMAIL }}\"" \
           -var "ssh_authorized_keys_base64=\"${{ secrets.SSH_AUTHORIZED_KEYS_BASE64 }}\"" \
-          -var "storage_account_name=${{ vars.IMAGE_STORAGE_ACCOUNT }}" \
-          -var "password=${{ secrets.PASSWORD }}" \
-          -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \
-          -var "resource_group_for_image=${{ vars.IMAGE_RESOURCE_GROUP }}" \
-          -var "luks_passphrase=${{ secrets.LUKS_PASSPHRASE }}" \
+          -var "storage_account_name=\"${{ vars.IMAGE_STORAGE_ACCOUNT }}\"" \
+          -var "password=\"${{ secrets.PASSWORD }}\"" \
+          -var "random_seed_for_oath=\"${{ secrets.OATH_SEED }}\"" \
+          -var "resource_group_for_image=\"${{ vars.IMAGE_RESOURCE_GROUP }}\"" \
+          -var "luks_passphrase=\"${{ secrets.LUKS_PASSPHRASE }}\"" \
           ./server-archlinux-packer.pkr.hcl
 
       - name: Run `packer init`
@@ -40,16 +40,16 @@ jobs:
         id: build
         run: | 
           PACKER_LOG=1 packer build \
-          -var "username=manuel" \
-          -var "smtp_server_incl_port=smtp.gmail.com:587" \
+          -var "username=\"${{ vars.USERNAME }}\"" \
+          -var "smtp_server_incl_port=\"${{ vars.SMTP_SERVER_INCL_PORT }}\"" \
           -var "smtp_user=\"${{ secrets.SMTP_USER }}\"" \
           -var "smtp_pass=\"${{ secrets.SMTP_PASS }}\"" \
           -var "smtp_sender=\"${{ secrets.SMTP_SENDER }}\"" \
           -var "notification_email=\"${{ vars.NOTIFICATION_EMAIL }}\"" \
           -var "ssh_authorized_keys_base64=\"${{ secrets.SSH_AUTHORIZED_KEYS_BASE64 }}\"" \
-          -var "storage_account_name=${{ vars.IMAGE_STORAGE_ACCOUNT }}" \
-          -var "password=${{ secrets.PASSWORD }}" \
-          -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \
-          -var "resource_group_for_image=${{ vars.IMAGE_RESOURCE_GROUP }}" \
-          -var "luks_passphrase=${{ secrets.LUKS_PASSPHRASE }}" \
+          -var "storage_account_name=\"${{ vars.IMAGE_STORAGE_ACCOUNT }}\"" \
+          -var "password=\"${{ secrets.PASSWORD }}\"" \
+          -var "random_seed_for_oath=\"${{ secrets.OATH_SEED }}\"" \
+          -var "resource_group_for_image=\"${{ vars.IMAGE_RESOURCE_GROUP }}\"" \
+          -var "luks_passphrase=\"${{ secrets.LUKS_PASSPHRASE }}\"" \
           ./server-archlinux-packer.pkr.hcl
