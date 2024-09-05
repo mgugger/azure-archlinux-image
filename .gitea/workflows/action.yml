@@ -23,7 +23,7 @@ jobs:
           -var "smtp_pass=\"${{ secrets.SMTP_PASS }}\"" \
           -var "smtp_sender=\"${{ secrets.SMTP_SENDER }}\"" \
           -var "notification_email=\"${{ secrets.NOTIFICATION_EMAIL }}\"" \
-          -var "ssh_authorized_keys_bas64=\"${{ secrets.SSH_AUTHORIZED_KEYS_BASE64 }}\"" \
+          -var "ssh_authorized_keys_base64=\"${{ secrets.SSH_AUTHORIZED_KEYS_BASE64 }}\"" \
           -var "storage_account_name=${{ vars.IMAGE_STORAGE_ACCOUNT }}" \
           -var "password=${{ secrets.PASSWORD }}" \
           -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \
@@ -41,7 +41,7 @@ jobs:
           -var "smtp_pass=\"${{ secrets.SMTP_PASS }}\"" \
           -var "smtp_sender=\"${{ secrets.SMTP_SENDER }}\"" \
           -var "notification_email=\"${{ secrets.NOTIFICATION_EMAIL }}\"" \
-          -var "ssh_authorized_keys_bas64=\"${{ secrets.SSH_AUTHORIZED_KEYS_BASE64 }}\"" \
+          -var "ssh_authorized_keys_base64=\"${{ secrets.SSH_AUTHORIZED_KEYS_BASE64 }}\"" \
           -var "storage_account_name=${{ vars.IMAGE_STORAGE_ACCOUNT }}" \
           -var "password=${{ secrets.PASSWORD }}" \
           -var "random_seed_for_oath=${{ secrets.OATH_SEED }}" \

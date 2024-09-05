@@ -35,7 +35,7 @@ variable "resource_group_for_image" {
   default = ""
 }
 
-variable "ssh_authorized_keys_bas64" {
+variable "ssh_authorized_keys_base64" {
   type = string
   default = ""
 }
@@ -85,7 +85,7 @@ build {
   }
 
   provisioner "ansible-local" {
-    extra_arguments = ["--extra-vars", "\"username=${var.username} create_minimal_image=true luks_passphrase=${var.luks_passphrase} password=${var.password} ssh_authorized_keys_bas64=${var.ssh_authorized_keys_bas64} random_seed=${var.random_seed_for_oath}\"", "-v"]
+    extra_arguments = ["--extra-vars", "\"username=${var.username} create_minimal_image=true luks_passphrase=${var.luks_passphrase} password=${var.password} ssh_authorized_keys_base64=${var.ssh_authorized_keys_base64} random_seed=${var.random_seed_for_oath}\"", "-v"]
     playbook_dir    = "playbooks"
     playbook_file   = "playbooks/1_archlinux-server-install-playbook.yml"
   }

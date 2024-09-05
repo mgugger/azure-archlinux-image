@@ -10,7 +10,7 @@
         useradd -m {{ username }} -G wheel -s /bin/bash
         echo -e "{{ password }}\n{{ password }}" | passwd {{ username }}
         mkdir /home/{{ username }}/.ssh
-        echo "{{ ssh_authorized_keys_bas64 | b64decode }}" >> /home/{{ username }}/.ssh/authorized_keys
+        echo "{{ ssh_authorized_keys_base64 | b64decode }}" >> /home/{{ username }}/.ssh/authorized_keys
         # look root
         passwd -l root
        
