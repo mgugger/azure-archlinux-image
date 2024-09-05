@@ -69,7 +69,7 @@
     force: yes
     dest: /mnt/etc/mkinitcpio.d/linux.preset
     content: |
-      ALL_kver="/boot/vmlinuz-linux"
+      ALL_kver="/boot/vmlinuz-{{ kernel }}"
       PRESETS=('default' 'fallback')
       default_uki="/efi/EFI/Linux/arch-linux.efi"
       default_options=""
