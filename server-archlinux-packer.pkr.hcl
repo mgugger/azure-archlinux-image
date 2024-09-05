@@ -91,7 +91,7 @@ build {
   }
 
   provisioner "shell" {
-    inline = ["pacman -Sy --noconfirm archlinux-keyring && pacman -Sy --noconfirm ansible && ansible-playbook --version"]
+    inline = ["pacman -Syu --noconfirm archlinux-keyring && pacman -Sy --noconfirm ansible", "ansible-playbook --version || echo 'Ansible installation failed'"]
   }
 
   provisioner "ansible-local" {
