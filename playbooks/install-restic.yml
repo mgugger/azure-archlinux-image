@@ -58,6 +58,7 @@
       Description=Restic backup on %I through restic only
       After=syslog.target
       After=network-online.target
+      OnFailure=notify-email@restic@%I.service
 
       [Service]
       Environment="http_proxy=http://127.0.0.1:8888"
@@ -153,6 +154,7 @@
       Description=Restic backup check on %I
       After=syslog.target
       After=network-online.target
+      OnFailure=notify-email@restic-check@%I.service
 
       [Service]
       Environment="http_proxy=http://127.0.0.1:8888"
@@ -179,6 +181,7 @@
       Description=Restic Forget and Prune on %I
       After=syslog.target
       After=network-online.target
+      OnFailure=notify-email@restic-forget-and-prune@%I.service
 
       [Service]
       Environment="http_proxy=http://127.0.0.1:8888"
