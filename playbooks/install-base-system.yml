@@ -44,8 +44,8 @@
     path: /mnt/etc/cmdline.d
     state: directory
 
-- name: Get the UUID of the LUKS partition at /dev/sda2
-  command: blkid -s UUID -o value /dev/sda2
+- name: Get the UUID of the LUKS partition at {{ install_device_name }}{{ root_partition_number }}
+  command: blkid -s UUID -o value {{ install_device_name }}{{ root_partition_number }}
   register: luks_partition_uuid
 
 - name: Debug LUKS partition UUID
