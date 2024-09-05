@@ -15,7 +15,7 @@ variable "password" {
   type = string
   validation {
     condition     = length(var.password) > 0
-    error_message = "The password length cannot be empty"
+    error_message = "The password length cannot be empty."
   }
 }
 
@@ -23,7 +23,7 @@ variable "luks_passphrase" {
   type = string
   validation {
     condition     = length(var.luks_passphrase) > 0
-    error_message = "The luks_passphrase length cannot be empty"
+    error_message = "The luks_passphrase length cannot be empty."
   }
 }
 
@@ -31,7 +31,7 @@ variable "random_seed_for_oath" {
   type = string
   validation {
     condition     = length(var.random_seed_for_oath) > 0
-    error_message = "The random_seed_for_oath length cannot be empty"
+    error_message = "The random_seed_for_oath length cannot be empty."
   }
 }
 
@@ -39,7 +39,7 @@ variable "resource_group_for_image" {
   type = string
   validation {
     condition     = length(var.resource_group_for_image) > 0
-    error_message = "The resource_group_for_image length cannot be empty"
+    error_message = "The resource_group_for_image length cannot be empty."
   }
 }
 
@@ -47,7 +47,7 @@ variable "ssh_authorized_keys_base64" {
   type = string
   validation {
     condition     = length(var.ssh_authorized_keys_base64) > 0
-    error_message = "The ssh_authorized_keys_base64 length cannot be empty"
+    error_message = "The ssh_authorized_keys_base64 length cannot be empty."
   }
 }
 
@@ -55,7 +55,7 @@ variable "storage_account_name" {
   type = string
   validation {
     condition     = length(var.storage_account_name) > 0
-    error_message = "The storage_account_name length cannot be empty"
+    error_message = "The storage_account_name length cannot be empty."
   }
 }
 
@@ -63,7 +63,7 @@ variable "username" {
   type = string
   validation {
     condition     = length(var.username) > 0
-    error_message = "The username length cannot be empty"
+    error_message = "The username length cannot be empty."
   }
 }
 
@@ -76,7 +76,7 @@ variable "smtp_user" {
   type = string
     validation {
     condition     = length(var.smtp_user) > 0
-    error_message = "The smtp_user length cannot be empty"
+    error_message = "The smtp_user length cannot be empty."
   }
 }
 
@@ -84,7 +84,7 @@ variable "smtp_pass" {
   type = string
     validation {
     condition     = length(var.smtp_pass) > 0
-    error_message = "The smtp_pass length cannot be empty"
+    error_message = "The smtp_pass length cannot be empty."
   }
 }
 
@@ -92,7 +92,7 @@ variable "notification_email" {
   type = string
     validation {
     condition     = length(var.notification_email) > 0
-    error_message = "The notification_email length cannot be empty"
+    error_message = "The notification_email length cannot be empty."
   }
 }
 
@@ -100,7 +100,7 @@ variable "smtp_sender" {
   type = string
     validation {
     condition     = length(var.smtp_sender) > 0
-    error_message = "The smtp_sender length cannot be empty"
+    error_message = "The smtp_sender length cannot be empty."
   }
 }
 
