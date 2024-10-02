@@ -36,7 +36,7 @@
       MODULES=(hv_storvsc hv_vmbus hv_netvsc)
       BINARIES=()
       FILES=()
-      HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt filesystems fsck btrfs)
+      HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block net sd-encrypt filesystems fsck btrfs)
       COMPRESSION="zstd"
 
 - name: Create /etc/cmdline.d directory
