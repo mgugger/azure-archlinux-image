@@ -33,7 +33,7 @@
     dest: /mnt/etc/mkinitcpio.conf
     force: yes
     content: |
-      MODULES=(hv_storvsc hv_vmbus)
+      MODULES=(hv_storvsc hv_vmbus hv_netvsc)
       BINARIES=()
       FILES=()
       HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt filesystems fsck btrfs)
