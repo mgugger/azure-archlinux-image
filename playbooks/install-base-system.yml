@@ -59,7 +59,7 @@
     force: yes
     dest: /mnt/etc/cmdline.d/root.conf
     content: |
-      rd.luks.name={{ luks_partition_uuid.stdout }}={{ luks_root_name }} root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 bgrt_disable
+      ip=dhcp rd.luks.name={{ luks_partition_uuid.stdout }}={{ luks_root_name }} root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 bgrt_disable
 
 - name: set cmdline security conf for UKI
   copy:
