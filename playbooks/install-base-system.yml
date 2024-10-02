@@ -1,6 +1,6 @@
 ---
 - name: pacstrap base system with {{ kernel }} and apparmor
-  command: pacstrap /mnt base {{ kernel }} linux-firmware openssh base-devel apparmor
+  command: pacstrap /mnt base {{ kernel }} linux-firmware openssh base-devel apparmor 
 
 - name: Run genfstab
   shell: 'genfstab -U /mnt > /mnt/etc/fstab'
@@ -97,7 +97,7 @@
         hwclock --systohc
         locale-gen
         echo -e "{{root_pw}}\n{{root_pw}}" | passwd
-        pacman -Sy --noconfirm btrfs-progs nano python sudo wireguard-tools
+        pacman -Sy --noconfirm btrfs-progs nano python sudo wireguard-tools mkinitcpio-nfs-utils
         mkdir -p /efi/EFI/Linux
         mkinitcpio -P {{ kernel }} || true
 
