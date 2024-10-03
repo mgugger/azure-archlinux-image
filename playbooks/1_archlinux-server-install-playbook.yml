@@ -13,6 +13,11 @@
     root_filesystem_label: "arch_os"
     create_minimal_image: false
   tasks:
+  - name: Install unzip on install media
+    pacman:
+      name: unzip
+      state: present
+
   - name: Check device name {{ install_device_name }} exists
     stat: "path={{ install_device_name }}"
     register: device
