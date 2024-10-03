@@ -46,6 +46,12 @@
 
   - include_tasks: notify-email-service.yml
 
+  - include_tasks: set-security-improvements.yml
+
+  - include_tasks: set-apparmor.yml
+
+  - include_tasks: other-optimizations.yml
+
   - include_tasks: install-cloud-init.yml
     when: create_minimal_image == false
 
@@ -67,18 +73,20 @@
   - include_tasks: install-restic.yml
     when: create_minimal_image == false
 
-  - include_tasks: other-optimizations.yml
-
   - include_tasks: install-tinyproxy.yml
     when: create_minimal_image == false
 
   - include_tasks: install-vector.yml
     when: create_minimal_image == false
 
-  - include_tasks: set-security-improvements.yml
+  # Install auto update and snapper latest to avoid unneeded snapshots in the image
+  - include_tasks: set-auto-update.yml
+    when: create_minimal_image == false
 
-  - include_tasks: set-apparmor.yml
+  - include_tasks: set-proxy-env.yml
+    when: create_minimal_image == false
 
+  # cleanup
   - name: Remove cached installed and orphaned packages
     ignore_errors: true
     command:
@@ -90,10 +98,10 @@
         - |
           pacman -Scc --noconfirm
           pacman -Rsn --noconfirm `pacman -Qqtd`
-
-  # Install auto update and snapper latest to avoid unneeded snapshots in the image
-  - include_tasks: set-auto-update.yml
-    when: create_minimal_image == false
-
-  - include_tasks: set-proxy-env.yml
-    when: create_minimal_image == false
+          journalctl --vacuum-size=50M
+          rm -rf /usr/share/man/* /usr/share/info/* /usr/share/doc/*
+          rm -rf /var/tmp/*
+          rm -rf /tmp/*
+          pacman-optimize
+          rm -rf /var/cache/pacman/pkg/*
+          pacman -Rns ttf-* noto-fonts

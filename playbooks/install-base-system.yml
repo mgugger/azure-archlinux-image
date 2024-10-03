@@ -36,7 +36,18 @@
       MODULES=(hv_storvsc hv_vmbus hv_netvsc)
       BINARIES=()
       FILES=()
-      HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block net sd-encrypt filesystems btrfs)
+      HOOKS=(base udev autodetect microcode modconf kms keyboard sd-vconsole block net luks_unlocker encrypt filesystems)
+      COMPRESSION="zstd"
+
+- name: Set modules for fallback
+  copy: 
+    dest: /mnt/etc/mkinitcpio-fallback.conf
+    force: yes
+    content: |
+      MODULES=(hv_storvsc hv_vmbus)
+      BINARIES=()
+      FILES=()
+      HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt filesystems)
       COMPRESSION="zstd"
 
 - name: Create /etc/cmdline.d directory
@@ -70,19 +81,73 @@
     content: |
       lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
 
-- name: set /etc/mkinitcpio.d/linux.preset
+- name: set /etc/mkinitcpio.d/{{ kernel }}.preset
   copy:
     owner: root
     group: root
     force: yes
-    dest: /mnt/etc/mkinitcpio.d/linux.preset
+    dest: /mnt/etc/mkinitcpio.d/{{ kernel }}.preset
     content: |
       ALL_kver="/boot/vmlinuz-{{ kernel }}"
       PRESETS=('default' 'fallback')
       default_uki="/efi/EFI/Linux/arch-linux.efi"
       default_options=""
+      default_config="/etc/mkinitcpio.conf"
       fallback_uki="/efi/EFI/Linux/arch-linux-fallback.efi"
       fallback_options="-S autodetect"
+      fallback_config="/etc/mkinitcpio-fallback.conf"
+
+- name: Set luks_unlocker hook
+  copy: 
+    dest: /mnt/etc/initcpio/hooks/luks_unlocker
+    force: yes
+    content: |
+      #!/usr/bin/ash
+
+      run_hook() {
+          echo "Running luks_unlocker"
+          echo "nameserver 168.63.129.16" >> /etc/resolv.conf
+          /luks_unlocker
+      }
+
+- name: Set luks_unlocker install
+  copy: 
+    dest: /mnt/etc/initcpio/install/luks_unlocker
+    force: yes
+    content: |
+      #!/bin/bash
+
+      build() {
+          add_binary /usr/local/bin/luks_unlocker /luks_unlocker
+          add_runscript
+      }
+
+      help() {
+          cat <<HELPEOF
+      This hook will attempt to decrypt the luks encryption.
+      HELPEOF
+      }
+
+- name: Ensure /etc/initcpio/install/luks_unlocker
+  file:
+    path: /mnt/etc/initcpio/install/luks_unlocker
+    mode: '0755'
+
+- name: Download luks_unlocker zip
+  get_url:
+    url: https://github.com/mgugger/azure-keyvault-unlock-luks/releases/download/v0.0.1/azure-keyvault-unlock-luks_x86_64.zip
+    dest: /tmp/luks_unlocker.zip
+
+- name: Unpack luks_unlocker zip
+  unarchive:
+    src: /tmp/luks_unlocker.zip
+    dest: /mnt/usr/local/bin
+    remote_src: yes
+
+- name: Ensure luks_unlocker is executable
+  file:
+    path: /mnt/usr/local/bin/luks_unlocker
+    mode: '0755'
 
 - name: Configure System
   command:
