@@ -17,6 +17,7 @@
     pacman:
       name: unzip
       state: present
+      update_cache: true
 
   - name: Check device name {{ install_device_name }} exists
     stat: "path={{ install_device_name }}"
