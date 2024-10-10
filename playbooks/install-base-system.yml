@@ -36,7 +36,7 @@
       MODULES=(hv_storvsc hv_vmbus hv_netvsc)
       BINARIES=()
       FILES=()
-      HOOKS=(base udev autodetect microcode modconf kms keyboard sd-vconsole block net luks_unlocker encrypt filesystems)
+      HOOKS=(base udev autodetect microcode modconf kms keyboard block net luks_unlocker encrypt filesystems)
       COMPRESSION="zstd"
 
 - name: Set modules for fallback
@@ -108,6 +108,12 @@
           echo "Running luks_unlocker"
           echo "nameserver 168.63.129.16" >> /etc/resolv.conf
           /luks_unlocker
+          
+          echo "Tearing down network interfaces before switching to real root..."
+          for iface in $(ip -o link show | awk -F': ' '{print $2}'); do
+              ip link set dev "$iface" down || true
+          done
+          rm -rf /var/lib/dhcp/* || true
       }
 
 - name: Set luks_unlocker install
