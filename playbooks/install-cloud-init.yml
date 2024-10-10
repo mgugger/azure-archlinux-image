@@ -30,6 +30,9 @@
     force: yes
     dest: /mnt/etc/cloud/cloud.cfg
     content: |
+      network:
+        config: disabled
+
       users:
         - default
       disable_root: true
