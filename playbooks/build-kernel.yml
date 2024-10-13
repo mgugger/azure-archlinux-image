@@ -115,7 +115,8 @@
       Before=cryptsetup-pre.target
       DefaultDependencies=no
       Wants=network-online.target
-      After=network-online.target systemd-networkd-wait-online.service
+      After=network-online.target systemd-networkd-wait-online.service systemd-networkd.service
+      Requires=systemd-networkd.service systemd-resolved.service
 
       [Service]
       Type=oneshot
