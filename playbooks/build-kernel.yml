@@ -107,7 +107,7 @@
 
 - name: Set luks_unlocker install
   copy: 
-    dest: /mnt/etc/initcpio/install/luks_unlocker
+    dest: /mnt/usr/lib/systemd/system/luks_unlocker.service
     force: yes
     content: |
       [Unit]
