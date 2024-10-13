@@ -1,6 +1,6 @@
 ---
 - name: pacstrap base system with {{ kernel }} and apparmor
-  command: pacstrap /mnt base {{ kernel }} linux-firmware openssh base-devel apparmor 
+  command: pacstrap /mnt base {{ kernel }} linux-firmware openssh base-devel apparmor btrfs-progs nano python sudo wireguard-tools
 
 - name: Run genfstab
   shell: 'genfstab -U /mnt > /mnt/etc/fstab'
@@ -28,154 +28,7 @@
       ::1		localhost
       127.0.1.1	archlinux.localdomain	archlinux
 
-- name: Set modules
-  copy: 
-    dest: /mnt/etc/mkinitcpio.conf
-    force: yes
-    content: |
-      MODULES=(hv_storvsc hv_vmbus hv_netvsc)
-      BINARIES=()
-      FILES=()
-      HOOKS=(base udev autodetect microcode modconf kms keyboard block net luks_unlocker encrypt filesystems)
-      COMPRESSION="zstd"
-
-- name: Set modules for fallback
-  copy: 
-    dest: /mnt/etc/mkinitcpio-fallback.conf
-    force: yes
-    content: |
-      MODULES=(hv_storvsc hv_vmbus)
-      BINARIES=()
-      FILES=()
-      HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt filesystems)
-      COMPRESSION="zstd"
-
-- name: Create /etc/cmdline.d directory
-  ansible.builtin.file:
-    path: /mnt/etc/cmdline.d
-    state: directory
-
-- name: Get the UUID of the LUKS partition at {{ install_device_name }}{{ root_partition_number }}
-  command: blkid -s UUID -o value {{ install_device_name }}{{ root_partition_number }}
-  register: luks_partition_uuid
-
-- name: Debug LUKS partition UUID
-  debug:
-    msg: "LUKS UUID is {{ luks_partition_uuid.stdout }}"
-
-- name: set cmdline root conf for UKI
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /mnt/etc/cmdline.d/root.conf
-    content: |
-      ip=dhcp rd.luks.name={{ luks_partition_uuid.stdout }}={{ luks_root_name }} root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 bgrt_disable
-
-- name: set cmdline security conf for UKI
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /mnt/etc/cmdline.d/security.conf
-    content: |
-      lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
-
-- name: set /etc/mkinitcpio.d/{{ kernel }}.preset
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /mnt/etc/mkinitcpio.d/{{ kernel }}.preset
-    content: |
-      ALL_kver="/boot/vmlinuz-{{ kernel }}"
-      PRESETS=('default' 'fallback')
-      default_uki="/efi/EFI/Linux/arch-linux.efi"
-      default_options=""
-      default_config="/etc/mkinitcpio.conf"
-      fallback_uki="/efi/EFI/Linux/arch-linux-fallback.efi"
-      fallback_options="-S autodetect"
-      fallback_config="/etc/mkinitcpio-fallback.conf"
-
-- name: Set luks_unlocker hook
-  copy: 
-    dest: /mnt/etc/initcpio/hooks/luks_unlocker
-    force: yes
-    content: |
-      #!/usr/bin/ash
-
-      run_hook() {
-          echo "Running luks_unlocker"
-          echo "nameserver 168.63.129.16" >> /etc/resolv.conf
-          /luks_unlocker
-          
-          echo "Tearing down network interfaces before switching to real root..."
-          for iface in $(ip -o link show | awk -F': ' '{print $2}'); do
-              ip link set dev "$iface" down || true
-          done
-          rm -rf /var/lib/dhcp/* || true
-      }
-
-- name: Set luks_unlocker install
-  copy: 
-    dest: /mnt/etc/initcpio/install/luks_unlocker
-    force: yes
-    content: |
-      #!/bin/bash
-
-      build() {
-          add_binary /usr/local/bin/luks_unlocker /luks_unlocker
-          add_runscript
-      }
-
-      help() {
-          cat <<HELPEOF
-      This hook will attempt to decrypt the luks encryption.
-      HELPEOF
-      }
-
-- name: Ensure /etc/initcpio/install/luks_unlocker
-  file:
-    path: /mnt/etc/initcpio/install/luks_unlocker
-    mode: '0755'
-
-- name: Download luks_unlocker zip
-  get_url:
-    url: https://github.com/mgugger/azure-keyvault-unlock-luks/releases/download/v0.0.1/azure-keyvault-unlock-luks_x86_64.zip
-    dest: /tmp/luks_unlocker.zip
-
-- name: Unpack luks_unlocker zip
-  unarchive:
-    src: /tmp/luks_unlocker.zip
-    dest: /mnt/usr/local/bin
-    remote_src: yes
-
-- name: Ensure luks_unlocker is executable
-  file:
-    path: /mnt/usr/local/bin/luks_unlocker
-    mode: '0755'
-
-- name: Configure System
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
-        pacman -S --noconfirm systemd-ukify sbctl
-        ln -sf /usr/share/zoneinfo/CET /etc/localtime
-        hwclock --systohc
-        locale-gen
-        echo -e "{{root_pw}}\n{{root_pw}}" | passwd
-        pacman -Sy --noconfirm btrfs-progs nano python sudo wireguard-tools mkinitcpio-nfs-utils
-        mkdir -p /efi/EFI/Linux
-        mkinitcpio -P {{ kernel }} || true
-
-### TODO: Sign the UK with sbctl
-### See regional availability: https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-secure-boot-custom-uefi
-
-- name: enable sshd
+- name: enable required services
   command:
     argv:
       - /usr/bin/arch-chroot
@@ -184,50 +37,14 @@
       - -c
       - |
         systemctl enable sshd
-
-- name: enable btrfs scrub for root
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
         systemctl enable btrfs-scrub@-.timer
-        
-- name: enable btrfs scrub for home
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
         sudo systemctl enable btrfs-scrub@home.timer
-
-- name: enable systemd services
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
         systemctl enable systemd-networkd
         systemctl enable systemd-timesyncd
         systemctl enable systemd-homed
         systemctl enable systemd-logind
         systemctl enable systemd-boot-update
         systemctl enable systemd-resolved
-
-- name: enable auditd
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
         systemctl enable auditd
 
 - name: Set wired networkd config

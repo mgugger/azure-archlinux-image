@@ -1,0 +1,132 @@
+---
+- name: Set modules
+  copy: 
+    dest: /mnt/etc/mkinitcpio.conf
+    force: yes
+    content: |
+      MODULES=(hv_storvsc hv_vmbus hv_netvsc)
+      BINARIES=()
+      FILES=()
+      HOOKS=(base udev autodetect microcode modconf kms keyboard block net luks_unlocker encrypt filesystems)
+      COMPRESSION="zstd"
+
+- name: Set modules for fallback
+  copy: 
+    dest: /mnt/etc/mkinitcpio-fallback.conf
+    force: yes
+    content: |
+      MODULES=(hv_storvsc hv_vmbus)
+      BINARIES=()
+      FILES=()
+      HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt filesystems)
+      COMPRESSION="zstd"
+
+- name: Create /etc/cmdline.d directory
+  ansible.builtin.file:
+    path: /mnt/etc/cmdline.d
+    state: directory
+
+- name: Get the UUID of the LUKS partition at {{ install_device_name }}{{ root_partition_number }}
+  command: blkid -s UUID -o value {{ install_device_name }}{{ root_partition_number }}
+  register: luks_partition_uuid
+
+- name: set cmdline root conf for UKI
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/cmdline.d/default/root.conf
+    content: |
+      root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+
+- name: set cmdline fallback conf for UKI
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/cmdline.d/fallback/root.conf
+    content: |
+      rd.luks.name={{ luks_partition_uuid.stdout }}={{ luks_root_name }} root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+
+- name: set /etc/mkinitcpio.d/{{ kernel }}.preset
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/mkinitcpio.d/{{ kernel }}.preset
+    content: |
+      ALL_kver="/boot/vmlinuz-{{ kernel }}"
+      PRESETS=('default' 'fallback')
+      default_uki="/efi/EFI/Linux/arch-linux.efi"
+      default_config="/etc/mkinitcpio.conf"
+      default_options="--cmdline /etc/cmdline.d/default/root.conf"
+      fallback_uki="/efi/EFI/Linux/arch-linux-fallback.efi"
+      fallback_options="--cmdline /etc/cmdline.d/fallback/root.conf -S autodetect"
+      fallback_config="/etc/mkinitcpio-fallback.conf"
+
+- name: Set luks_unlocker install
+  copy: 
+    dest: /mnt/etc/initcpio/install/luks_unlocker
+    force: yes
+    content: |
+      #!/bin/bash
+
+      build() {
+          add_binary /usr/local/bin/luks_unlocker /usr/local/bin/luks_unlocker
+          add_systemd_unit luks_unlocker.service
+          add_systemd_unit network-online.target
+          add_systemd_unit cryptsetup-pre.target
+          add_systemd_unit systemd-networkd-wait-online.service
+          cd "$BUILDROOT/usr/lib/systemd/system/sysinit.target.wants"
+              ln -sf ../cryptsetup-pre.target cryptsetup-pre.target
+              ln -sf ../luks_unlocker.service luks_unlocker.service
+              ln -sf ../network-online.target network-online.target
+              ln -sf ../systemd-networkd-wait-online.service systemd-networkd-wait-online.service
+      }
+
+      help() {
+          cat <<HELPEOF
+      This hook will attempt to decrypt the luks encryption.
+      HELPEOF
+      }
+
+- name: Ensure /etc/initcpio/install/luks_unlocker
+  file:
+    path: /mnt/etc/initcpio/install/luks_unlocker
+    mode: '0755'
+
+- name: Download luks_unlocker zip
+  get_url:
+    url: https://github.com/mgugger/azure-keyvault-unlock-luks/releases/download/v0.0.1/azure-keyvault-unlock-luks_x86_64.zip
+    dest: /tmp/luks_unlocker.zip
+
+- name: Unpack luks_unlocker zip
+  unarchive:
+    src: /tmp/luks_unlocker.zip
+    dest: /mnt/usr/local/bin
+    remote_src: yes
+
+- name: Ensure luks_unlocker is executable
+  file:
+    path: /mnt/usr/local/bin/luks_unlocker
+    mode: '0755'
+
+- name: Configure System
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        pacman -S --noconfirm systemd-ukify sbctl
+        yay -S --noconfirm --aur mkinitcpio-systemd-extras
+        ln -sf /usr/share/zoneinfo/CET /etc/localtime
+        hwclock --systohc
+        locale-gen
+        echo -e "{{root_pw}}\n{{root_pw}}" | passwd
+        mkdir -p /efi/EFI/Linux
+        mkinitcpio -P {{ kernel }} || true
+
+### TODO: Sign the UK with sbctl
+### See regional availability: https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-secure-boot-custom-uefi

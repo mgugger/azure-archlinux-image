@@ -20,8 +20,23 @@
         git clone https://aur.archlinux.org/yay-bin.git
         chmod 777 yay-bin
 
+- name: create tmpuser
+  command: 
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        useradd -m tmpuser -G wheel -s /bin/bash
+
+- name: allow admin user passwordless sudo
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/sudoers
+    regexp: '^tmpuser ALL=(ALL:ALL) NOPASSWD:ALL'
+    line: "tmpuser ALL=(ALL:ALL) NOPASSWD:ALL"
+
 - name: makepkg
-  when: username is defined
   command:
     argv:
       - /usr/bin/arch-chroot
@@ -29,20 +44,9 @@
       - /bin/bash
       - -c
       - |
-        cd yay-bin && sudo -u {{ username }} makepkg -si --noconfirm
+        cd yay-bin && sudo -u tmpuser makepkg -si --noconfirm
 
-- name: makepkg
-  when: lookup('env', 'USER') != "root" and username is not defined
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
-        cd yay-bin && makepkg -si --noconfirm
-
-- name: remove cloned yay folder 
+- name: remove cloned yay folder and remove tmpuser
   command: 
     argv:
       - /usr/bin/arch-chroot
@@ -51,3 +55,11 @@
       - -c
       - |
         rm -rf yay-bin
+        userdel -r tmpuser
+
+- name: remove tmpuser user passwordless sudo
+  ansible.builtin.lineinfile:
+    state: absent
+    path: /mnt/etc/sudoers
+    regexp: '^tmpuser ALL=(ALL:ALL) NOPASSWD:ALL'
+    line: "tmpuser ALL=(ALL:ALL) NOPASSWD:ALL"
