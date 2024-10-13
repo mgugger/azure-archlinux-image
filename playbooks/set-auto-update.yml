@@ -1,5 +1,6 @@
 ---
 - name: Install pacman-auto-update
+  ignore_errors: true
   command: 
     argv:
       - /usr/bin/arch-chroot
