@@ -1,5 +1,6 @@
 ---
 - name: Install cockpit and open firewalld port
+  ignore_errors: true
   command:
     argv:
       - /usr/bin/arch-chroot
