@@ -150,7 +150,7 @@
       - -c
       - |
         pacman -S --noconfirm systemd-ukify sbctl
-        yay -S --noconfirm --aur mkinitcpio-systemd-extras
+        sudo -u tmpuser yay -Sy --noconfirm --aur mkinitcpio-systemd-extras
         ln -sf /usr/share/zoneinfo/CET /etc/localtime
         hwclock --systohc
         locale-gen
@@ -158,15 +158,25 @@
         mkdir -p /efi/EFI/Linux
         mkinitcpio -P {{ kernel }} || true
 
-- name: Ensure /usr/lib/initcpio/install/sd-resolve directory exists
-  file:
-    path: /mnt/usr/lib/initcpio/install/sd-resolve
-    state: directory
-
-- name: Ensure /usr/lib/initcpio/install/sd-network directory exists
-  file:
+- name: Fail if /mnt/usr/lib/initcpio/install/sd-network does not exist
+  stat:
     path: /mnt/usr/lib/initcpio/install/sd-network
-    state: directory
+  register: sd_network_file
+
+- name: Check if sd-network file exists
+  fail:
+    msg: "/mnt/usr/lib/initcpio/install/sd-network does not exist"
+  when: not sd_network_file.stat.exists
+
+- name: Fail if /mnt/usr/lib/initcpio/install/sd-resolve does not exist
+  stat:
+    path: /mnt/usr/lib/initcpio/install/sd-resolve
+  register: sd_resolve_file
+
+- name: Check if sd-resolve file exists
+  fail:
+    msg: "/mnt/usr/lib/initcpio/install/sd-resolve does not exist"
+  when: not sd_resolve_file.stat.exists
 
 ### TODO: Sign the UK with sbctl
 ### See regional availability: https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-secure-boot-custom-uefi

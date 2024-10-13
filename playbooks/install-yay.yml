@@ -55,11 +55,3 @@
       - -c
       - |
         rm -rf yay-bin
-        userdel -r tmpuser
-
-- name: remove tmpuser user passwordless sudo
-  ansible.builtin.lineinfile:
-    state: absent
-    path: /mnt/etc/sudoers
-    regexp: '^tmpuser ALL=(ALL:ALL) NOPASSWD:ALL'
-    line: "tmpuser ALL=(ALL:ALL) NOPASSWD:ALL"
