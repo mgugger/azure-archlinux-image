@@ -7,7 +7,7 @@
       MODULES=(hv_storvsc hv_vmbus hv_netvsc)
       BINARIES=()
       FILES=()
-      HOOKS=(base udev autodetect microcode modconf kms keyboard block net luks_unlocker encrypt filesystems)
+      HOOKS=(systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-network sd-resolve luks_unlocker sd-encrypt filesystems)
       COMPRESSION="zstd"
 
 - name: Set modules for fallback
@@ -18,7 +18,7 @@
       MODULES=(hv_storvsc hv_vmbus)
       BINARIES=()
       FILES=()
-      HOOKS=(base systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt filesystems)
+      HOOKS=(systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt filesystems)
       COMPRESSION="zstd"
 
 - name: Create /etc/cmdline.d directory
@@ -105,6 +105,26 @@
     path: /mnt/etc/initcpio/install/luks_unlocker
     mode: '0755'
 
+- name: Set luks_unlocker install
+  copy: 
+    dest: /mnt/etc/initcpio/install/luks_unlocker
+    force: yes
+    content: |
+      [Unit]
+      Description=Unlock LUKS with KeyVault
+      Before=cryptsetup-pre.target
+      DefaultDependencies=no
+      Wants=network-online.target
+      After=network-online.target systemd-networkd-wait-online.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/local/bin/luks_unlocker
+
+      [Install]
+      WantedBy=cryptsetup-pre.target
+
 - name: Download luks_unlocker zip
   get_url:
     url: https://github.com/mgugger/azure-keyvault-unlock-luks/releases/download/v0.0.1/azure-keyvault-unlock-luks_x86_64.zip
@@ -137,6 +157,16 @@
         echo -e "{{root_pw}}\n{{root_pw}}" | passwd
         mkdir -p /efi/EFI/Linux
         mkinitcpio -P {{ kernel }} || true
+
+- name: Ensure /usr/lib/initcpio/install/sd-resolve directory exists
+  file:
+    path: /mnt/usr/lib/initcpio/install/sd-resolve
+    state: directory
+
+- name: Ensure /usr/lib/initcpio/install/sd-network directory exists
+  file:
+    path: /mnt/usr/lib/initcpio/install/sd-network
+    state: directory
 
 ### TODO: Sign the UK with sbctl
 ### See regional availability: https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-secure-boot-custom-uefi
