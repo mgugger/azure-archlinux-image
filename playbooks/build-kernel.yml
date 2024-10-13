@@ -121,6 +121,10 @@
       Type=oneshot
       RemainAfterExit=yes
       ExecStart=/usr/local/bin/luks_unlocker
+      Restart=on-failure           
+      RestartSec=5s                
+      StartLimitIntervalSec=60s    
+      StartLimitBurst=6
 
       [Install]
       WantedBy=cryptsetup-pre.target
