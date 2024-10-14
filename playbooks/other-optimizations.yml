@@ -1,5 +1,5 @@
 ---
-- name: Create resolved.conf.d directory
+- name: Create sysctl.d directory
   ansible.builtin.file:
     path: /mnt/etc/sysctl.d
     state: directory
