@@ -7,7 +7,7 @@
       MODULES=(hv_storvsc hv_vmbus hv_netvsc)
       BINARIES=()
       FILES=()
-      HOOKS=(systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-network sd-resolve luks_unlocker sd-encrypt filesystems)
+      HOOKS=(systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-network luks_unlocker sd-encrypt filesystems)
       COMPRESSION="zstd"
 
 - name: Set modules for fallback
@@ -174,16 +174,6 @@
   fail:
     msg: "/mnt/usr/lib/initcpio/install/sd-network does not exist"
   when: not sd_network_file.stat.exists
-
-- name: Fail if /mnt/usr/lib/initcpio/install/sd-resolve does not exist
-  stat:
-    path: /mnt/usr/lib/initcpio/install/sd-resolve
-  register: sd_resolve_file
-
-- name: Check if sd-resolve file exists
-  fail:
-    msg: "/mnt/usr/lib/initcpio/install/sd-resolve does not exist"
-  when: not sd_resolve_file.stat.exists
 
 ### TODO: Sign the UK with sbctl
 ### See regional availability: https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-secure-boot-custom-uefi
