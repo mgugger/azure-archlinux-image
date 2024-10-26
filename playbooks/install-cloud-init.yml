@@ -9,6 +9,7 @@
       - -c
       - |
         pacman -Sy --noconfirm cloud-init cloud-utils gptfdisk udftools
+        systemctl enable cloud-init-main.service
         systemctl enable cloud-init-network.service
         systemctl enable cloud-final.service
 
