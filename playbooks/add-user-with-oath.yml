@@ -59,8 +59,14 @@
       # Option User Prefix Seed
       HOTP/T30/6 {{ username }} - {{ random_seed }}
 
-- name: set pam to use oath
+- name: set pam to use oath with sshd
   lineinfile:
     path: /mnt/etc/pam.d/sshd
     insertbefore: BOF
     line: auth	  sufficient pam_oath.so usersfile=/etc/users.oath window=30 digits=6
+
+- name: set pam to use oath for login
+  lineinfile:
+    path: /mnt/etc/pam.d/login
+    insertbefore: BOF
+    line: auth      required pam_oath.so usersfile=/etc/users.oath window=30 digits=6
