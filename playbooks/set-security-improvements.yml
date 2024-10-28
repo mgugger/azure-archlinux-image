@@ -63,7 +63,13 @@
       kernel.kexec_load_disabled=1
       kernel.unprivileged_userns_clone=0
       kernel.perf_event_paranoid=3
-      kernel.yama.ptrace_scope=2
+      kernel.yama.ptrace_scope=3
+      kernel.oops_limit=100
+      kernel.warn_limit=100
+      user.max_user_namespaces=0
+      kernel.kexec_load_disabled=1
+      vm.unprivileged_userfaultfd=0
+      kernel.io_uring_disabled=2
       
       dev.tty.ldisc_autoload=0
       
