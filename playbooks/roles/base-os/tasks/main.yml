@@ -1,4 +1,81 @@
 ---
+- name: pacstrap base system with {{ kernel }} and apparmor
+  command: pacstrap /mnt base {{ kernel }} linux-firmware openssh base-devel apparmor btrfs-progs nano python sudo wireguard-tools audit
+
+- name: Run genfstab
+  shell: 'genfstab -U /mnt > /mnt/etc/fstab'
+
+- name: "Read a file content"
+  shell: |
+    cat /mnt/etc/fstab
+  register: file_content
+
+- name: "Fail if the fstab does not contain the UUIDs"
+  failed_when: file_content.stdout.find('UUID') == -1
+  debug:
+    msg: "{{ file_content.stdout }}"
+
+- name: Set hostname to archlinux
+  copy:
+    dest: /mnt/etc/hostname
+    content: archlinux
+
+- name: set hosts
+  copy:
+    dest: /mnt/etc/hosts
+    content: |
+      127.0.0.1	localhost
+      ::1		localhost
+      127.0.1.1	archlinux.localdomain	archlinux
+
+- name: enable required services
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        systemctl enable sshd
+        systemctl enable btrfs-scrub@-.timer
+        sudo systemctl enable btrfs-scrub@home.timer
+        systemctl enable systemd-networkd
+        systemctl enable systemd-timesyncd
+        systemctl enable systemd-homed
+        systemctl enable systemd-logind
+        systemctl enable systemd-boot-update
+        systemctl enable systemd-resolved
+        systemctl enable auditd
+
+- name: Set wired networkd config
+  copy:
+    dest: /mnt/etc/systemd/network/20-wired.network
+    force: yes
+    content: |
+      [Match]
+      Name={{ network_interface_name }}
+
+      [Network]
+      DHCP=yes
+      Domains=~azure.net ~azure.com ~azurewebsites.net ~windows.net ~azuresynapse.net ~azure-automation.net
+      DNSDefaultRoute=false
+
+- name: use locale en_US.UTF-8
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/locale.gen
+    regexp: '^en_US.UTF-8 UTF-8'
+    line: en_US.UTF-8 UTF-8
+
+- name: Set language to en_US.UTF-8 UTF-8
+  copy:
+    dest: /mnt/etc/locale.conf
+    content: LANG=en_US.UTF-8
+
+- name: Set keymap to de_CH-latin1
+  copy:
+    dest: /mnt/etc/vconsole.conf
+    content: KEYMAP=de_CH-latin1
+
 - name: create mirrorlist for switzerland and germany
   copy:
     owner: root
@@ -71,3 +148,43 @@
       Server = https://mirror.wtnet.de/archlinux/$repo/os/$arch
       Server = https://mirrors.xtom.de/archlinux/$repo/os/$arch
       Server = https://arch.mirror.zachlge.org/$repo/os/$arch
+
+- name: require signed packages
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/pacman.conf
+    regexp: ^\#*SigLevel\s*=.*$
+    line: SigLevel = Required DatabaseOptional
+
+- name: require signed local packages
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/pacman.conf
+    regexp: ^\#*LocalFileSigLevel\s*=.*$
+    line: LocalFileSigLevel = Required
+
+- name: Create resolved.conf.d directory
+  ansible.builtin.file:
+    path: /mnt/etc/systemd/resolved.conf.d
+    state: directory
+
+- name: symlink resolv.conf to systemd-resolved
+  command: ln -sf /run/systemd/resolve/stub-resolv.conf /mnt/etc/resolv.conf
+
+- name: enable dnssec
+  copy:
+    force: yes
+    mode: 0644
+    dest: /mnt/etc/systemd/resolved.conf.d/dnssec.conf
+    content: |
+      [Resolve]
+      DNSSEC=true
+
+- name: Copy nameserver for systemd-resolved
+  copy:
+    force: yes
+    mode: 0644
+    dest: /mnt/etc/systemd/resolved.conf.d/dns_over_tls.conf
+    content: |
+      [Resolve]
+      DNS=9.9.9.9#dns.quad9.net
+      DNSOverTLS=opportunistic
+      Domains=~.

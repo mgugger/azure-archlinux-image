@@ -14,16 +14,19 @@ packer {
 variable "password" {
   type = string
   default = ""
+  sensitive = true
 }
 
 variable "luks_passphrase" {
   type = string
   default = ""
+  sensitive = true
 }
 
 variable "random_seed_for_oath" {
   type = string
   default = ""
+  sensitive = true
 }
 
 variable "resource_group_for_image" {
@@ -34,6 +37,7 @@ variable "resource_group_for_image" {
 variable "ssh_authorized_keys_base64" {
   type = string
   default = ""
+  sensitive = true
 }
 
 variable "storage_account_name" {

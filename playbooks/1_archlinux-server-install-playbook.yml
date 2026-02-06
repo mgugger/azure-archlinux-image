@@ -40,21 +40,15 @@
 
   - include_tasks: format-and-mount-partitions.yml
 
-  - include_tasks: install-base-system.yml
+  - name: Base OS setup
+    ansible.builtin.include_role:
+      name: base-os
 
   - include_tasks: install-yay.yml
 
   - include_tasks: build-kernel.yml
 
-  - include_tasks: set-pacman-mirrorlist.yml
-
-  - include_tasks: set-locale-and-language.yml
-
   - include_tasks: set-bootloader.yml
-
-  - include_tasks: set-systemd-resolved.yml
-
-  - include_tasks: notify-email-service.yml
 
   - include_tasks: set-security-improvements.yml
 
@@ -62,31 +56,33 @@
 
   - include_tasks: other-optimizations.yml
 
-  - include_tasks: install-cloud-init.yml
+  - name: Cloud-init setup
+    ansible.builtin.include_role:
+      name: cloud-init
     when: create_minimal_image == false
 
-  - include_tasks: install-firewalld.yml
+  - name: Networking hardening
+    ansible.builtin.include_role:
+      name: networking-hardening
     when: create_minimal_image == false
 
   - include_tasks: add-user-with-oath.yml
     when: create_minimal_image == false
 
-  - include_tasks: install-cockpit.yml
+  - name: Observability
+    ansible.builtin.include_role:
+      name: observability
     when: create_minimal_image == false
 
-  - include_tasks: install-caddy.yml
+  - name: Caddy
+    ansible.builtin.include_role:
+      name: caddy
     when: create_minimal_image == false
 
-  - include_tasks: install-restic.yml
-    when: create_minimal_image == false
 
-  - include_tasks: install-tinyproxy.yml
-    when: create_minimal_image == false
-
-  - include_tasks: install-vector.yml
-    when: create_minimal_image == false
-
-  - include_tasks: set-proxy-env.yml
+  - name: Backups
+    ansible.builtin.include_role:
+      name: backups
     when: create_minimal_image == false
 
   # cleanup

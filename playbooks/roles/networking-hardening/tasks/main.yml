@@ -1,4 +1,38 @@
 ---
+- name: Install firewalld
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        pacman -Sy --noconfirm firewalld nftables
+        firewall-offline-cmd --remove-service=ssh
+        firewall-offline-cmd --zone public --add-rich-rule 'rule service name="ssh" accept limit value="2/m"'
+        firewall-offline-cmd --zone=public --add-service=http
+        firewall-offline-cmd --zone=public --add-service=https
+        firewall-offline-cmd --zone=internal --add-service=http
+        firewall-offline-cmd --zone=internal --add-service=https
+        # Enable wireguard
+        firewall-offline-cmd --zone=internal --add-service=wireguard
+        firewall-offline-cmd --zone=public --add-service=wireguard
+        # firewall-offline-cmd --zone=public --add-port=51820/udp
+        # firewall-offline-cmd --zone=public --add-masquerade
+
+        # Required to act as VPN
+        firewall-offline-cmd --zone=public --add-interface=eth0
+        firewall-offline-cmd --zone=internal --add-interface=wg0
+
+        # Enable firewalld in cloud-init: systemctl enable firewalld
+        systemctl disable firewalld
+
+- name: enable logdenied=all
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/firewalld/firewalld.conf
+    regexp: ^\#*LogDenied=(.*)$
+    line: LogDenied=all
+
 - name: Install and enable tinyproxy
   command:
     argv:
@@ -104,6 +138,19 @@
       mirrors.xtom.de
       arch.mirror.zachlge.org
 
+- name: Create tinyproxy systemd drop-in directory
+  ansible.builtin.file:
+    path: /mnt/usr/lib/systemd/system/tinyproxy.service.d
+    state: directory
+
+- name: harden tinyproxy systemd service (common)
+  copy:
+    owner: root
+    group: root
+    force: yes
+    src: "{{ playbook_dir }}/files/systemd-hardening-common.conf"
+    dest: /mnt/usr/lib/systemd/system/tinyproxy.service.d/00-hardening-common.conf
+
 - name: set firewall rules so that only tinyproxy and systemd-resolved are allowed to make calls to the internet
   command:
     argv:
@@ -128,3 +175,53 @@
         firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 1 -p tcp -m tcp -d 9.9.9.9 --dport=853 -j ACCEPT
         # Drop all other outgoing traffic
         firewall-offline-cmd --direct --add-rule ipv4 filter OUTPUT 2 -o eth0 -j DROP
+
+- name: Add http_proxy to environment
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/environment
+    line: http_proxy=http://127.0.0.1:8888
+    create: yes
+
+- name: Add HTTP_PROXY to environment
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/environment
+    line: HTTP_PROXY=http://127.0.0.1:8888
+    create: yes
+
+- name: Add https_proxy to environment
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/environment
+    line: https_proxy=http://127.0.0.1:8888
+    create: yes
+
+- name: Add HTTPS_PROXY to environment
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/environment
+    line: HTTPS_PROXY=http://127.0.0.1:8888
+    create: yes
+
+- name: Add no_proxy to environment
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/environment
+    line: no_proxy=localhost,127.0.0.1
+    create: yes
+
+- name: Add NO_PROXY to environment
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/environment
+    line: NO_PROXY=localhost,127.0.0.1
+    create: yes
+
+- name: Create systemd proxy env file
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system/proxy.env
+    content: |
+      http_proxy=http://127.0.0.1:8888
+      https_proxy=http://127.0.0.1:8888
+      HTTP_PROXY=http://127.0.0.1:8888
+      HTTPS_PROXY=http://127.0.0.1:8888
+      no_proxy=localhost,127.0.0.1
+      NO_PROXY=localhost,127.0.0.1

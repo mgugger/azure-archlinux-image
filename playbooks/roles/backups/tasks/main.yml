@@ -61,12 +61,7 @@
       OnFailure=notify-email@restic@%I.service
 
       [Service]
-      Environment="http_proxy=http://127.0.0.1:8888"
-      Environment="https_proxy=http://127.0.0.1:8888"
-      Environment="HTTP_PROXY=http://127.0.0.1:8888"
-      Environment="HTTPS_PROXY=http://127.0.0.1:8888"
-      Environment="no_proxy=localhost,127.0.0.1"
-      Environment="NO_PROXY=localhost,127.0.0.1"
+      EnvironmentFile=/etc/systemd/system/proxy.env
       Type=oneshot
       User=restic
       ExecStart=/usr/bin/restic backup --files-from /etc/restic/%I.files --exclude-file /etc/restic/%I.exclude
@@ -114,10 +109,7 @@
       BindsTo=restic@%I.service
 
       [Service]
-      Environment="http_proxy=http://127.0.0.1:8888"
-      Environment="https_proxy=http://127.0.0.1:8888"
-      Environment="HTTP_PROXY=http://127.0.0.1:8888"
-      Environment="HTTPS_PROXY=http://127.0.0.1:8888"
+      EnvironmentFile=/etc/systemd/system/proxy.env
       Environment="RCLONE_ADDR=127.0.0.1:33333"
       Environment="RCLONE_APPEND_ONLY=true"
       Type=simple
@@ -157,10 +149,7 @@
       OnFailure=notify-email@restic-check@%I.service
 
       [Service]
-      Environment="http_proxy=http://127.0.0.1:8888"
-      Environment="https_proxy=http://127.0.0.1:8888"
-      Environment="HTTP_PROXY=http://127.0.0.1:8888"
-      Environment="HTTPS_PROXY=http://127.0.0.1:8888"
+      EnvironmentFile=/etc/systemd/system/proxy.env
       Type=oneshot
       User=restic
       ExecStart=/usr/bin/restic check --read-data
@@ -184,13 +173,10 @@
       OnFailure=notify-email@restic-forget-and-prune@%I.service
 
       [Service]
-      Environment="http_proxy=http://127.0.0.1:8888"
-      Environment="https_proxy=http://127.0.0.1:8888"
-      Environment="HTTP_PROXY=http://127.0.0.1:8888"
-      Environment="HTTPS_PROXY=http://127.0.0.1:8888"
+      EnvironmentFile=/etc/systemd/system/proxy.env
       Type=oneshot
       User=restic
-      ExecStart=/usr/bin/restic forget --prune --keep-daily 7 --keep-weekly 4 --keep-monthly 4 
+      ExecStart=/usr/bin/restic forget --prune --keep-daily 7 --keep-weekly 4 --keep-monthly 4
       EnvironmentFile=/etc/restic/%I.env
       AmbientCapabilities=CAP_DAC_READ_SEARCH
 
@@ -230,7 +216,7 @@
 
       [Install]
       WantedBy=timers.target
-      
+
 - name: create restic-rclone@.timer
   copy:
     owner: root

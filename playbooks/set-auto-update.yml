@@ -43,10 +43,7 @@
       OnFailure=notify-email@pacman-auto-update.service
 
       [Service]
-      Environment="http_proxy=http://127.0.0.1:8888"
-      Environment="https_proxy=http://127.0.0.1:8888"
-      Environment="HTTP_PROXY=http://127.0.0.1:8888"
-      Environment="HTTPS_PROXY=http://127.0.0.1:8888"
+      EnvironmentFile=/etc/systemd/system/proxy.env
 
 - name: set systemd reboot-sched.service
   copy:

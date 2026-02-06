@@ -1,0 +1,345 @@
+---
+### Taken from https://github.com/MicrosoftDocs/azure-docs/blob/main/articles/governance/policy/samples/guest-configuration-baseline-linux.md
+- name: block {{ item }} module
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/modprobe.d/blacklist.conf
+    line: install {{ item }} /bin/true
+    create: yes
+  loop:
+    - usb_storage
+    - hfs
+    - dccp
+    - sctp
+    - hfsplus
+    - udf
+    - ufs
+    - squashfs
+    - minix
+    - reiserfs
+    - befs
+    - adfs
+    - nilfs2
+    - rds
+    - tipc
+    - jffs2
+    - n-hdlc
+    - ax25
+    - netrom
+    - x25
+    - rose
+    - decnet
+    - econet
+    - af_802154
+    - ipx
+    - appletalk
+    - psnap
+    - p8023
+    - p8022
+    - can
+    - atm
+    - cramfs
+    - freevxfs
+    - vivid
+    - firewire-core
+    - thunderbolt
+
+- name: Ensure core dumps are restricted
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/security/limits.conf
+    line: "* hard core 0"
+    create: yes
+
+- name: set sysctl settings
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/sysctl.d/security_settings.conf
+    content: |
+      fs.suid_dumpable = 0
+      fs.protected_symlinks=1
+      fs.protected_hardlinks=1
+      fs.protected_fifos=2
+      fs.protected_regular=2
+
+      kernel.randomize_va_space = 2
+      kernel.kptr_restrict=2
+      kernel.dmesg_restrict=1
+      kernel.printk=3 3 3 3
+      kernel.unprivileged_bpf_disabled=1
+      kernel.sysrq=0
+      kernel.kexec_load_disabled=1
+      kernel.unprivileged_userns_clone=0
+      kernel.perf_event_paranoid=3
+      kernel.yama.ptrace_scope=3
+      kernel.oops_limit=100
+      kernel.warn_limit=100
+      kernel.kexec_load_disabled=1
+      vm.unprivileged_userfaultfd=0
+      kernel.io_uring_disabled=2
+
+      dev.tty.ldisc_autoload=0
+
+      net.core.bpf_jit_harden=2
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv4.conf.all.secure_redirects = 0
+      net.ipv4.conf.default.secure_redirects = 0
+      net.ipv4.conf.all.accept_source_route = 0
+      net.ipv4.conf.default.accept_source_route = 0
+      net.ipv4.icmp_ignore_bogus_error_responses = 1
+      net.ipv4.icmp_echo_ignore_broadcasts = 1
+      net.ipv4.conf.default.log_martians = 1
+      net.ipv4.conf.all.log_martians = 1
+      net.ipv4.conf.default.rp_filter = 1
+      net.ipv4.conf.all.rp_filter = 1
+      net.ipv4.tcp_syncookies = 1
+      net.ipv4.tcp_rfc1337=1
+      net.ipv4.icmp_echo_ignore_all=1
+      net.ipv4.tcp_sack=0
+      net.ipv4.tcp_dsack=0
+      net.ipv4.tcp_fack=0
+      net.ipv4.tcp_timestamps=0
+
+      net.ipv6.conf.all.accept_ra=0
+      net.ipv6.conf.default.accept_ra=0
+      net.ipv6.conf.all.accept_ra_defrtr=0
+      net.ipv6.conf.default.accept_ra_defrtr=0
+      net.ipv6.conf.all.accept_ra_pinfo=0
+      net.ipv6.conf.default.accept_ra_pinfo=0
+      net.ipv6.conf.all.accept_ra_rtr_pref=0
+      net.ipv6.conf.default.accept_ra_rtr_pref=0
+      net.ipv6.conf.all.accept_ra_mtu=0
+      net.ipv6.conf.default.accept_ra_mtu=0
+      net.ipv6.conf.all.router_solicitations=0
+      net.ipv6.conf.default.router_solicitations=0
+      net.ipv6.conf.all.accept_redirects = 0
+      net.ipv6.conf.default.accept_redirects = 0
+      net.ipv6.conf.default.accept_source_route = 0
+      net.ipv6.conf.all.accept_source_route = 0
+      net.ipv6.conf.all.use_tempaddr=2
+      net.ipv6.conf.default.use_tempaddr=2
+
+      vm.unprivileged_userfaultfd=0
+      vm.mmap_rnd_bits=32
+      vm.mmap_rnd_compat_bits=16
+      vm.swappiness=10
+
+      # Allow for wireguard
+      net.ipv4.ip_forward=1
+      net.ipv6.conf.all.forwarding=1
+
+- name: restrict su to wheel group
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/pam.d/su-l
+    regexp: ^\#*auth(.*)required(.*)pam_wheel.so(.*)use_uid$
+    line: auth required pam_wheel.so use_uid
+
+- name: increase passwd hashing rounds
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/pam.d/passwd
+    regexp: ^password(.*)required(.*)pam_unix.so(.*)$
+    line: password required pam_unix.so sha512 shadow nullok rounds=65536
+
+- name: sshd ignorerhosts yes
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^IgnoreRhosts(.*)$
+    line: IgnoreRhosts yes
+
+- name: sshd MaxAuthTries 3
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^MaxAuthTries(.*)$
+    line: MaxAuthTries 3
+
+- name: sshd RhostsRSAAuthentication no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^RhostsRSAAuthentication(.*)$
+    line: RhostsRSAAuthentication no
+
+- name: sshd HostbasedAuthentication no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^HostbasedAuthentication(.*)$
+    line: HostbasedAuthentication no
+
+- name: sshd PermitRootLogin no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^PermitRootLogin(.*)$
+    line: PermitRootLogin no
+
+- name: sshd PermitEmptyPasswords no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^PermitEmptyPasswords(.*)$
+    line: PermitEmptyPasswords no
+
+- name: sshd ClientAliveCountMax 0
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^ClientAliveCountMax(.*)$
+    line: ClientAliveCountMax 0
+
+- name: sshd LoginGraceTime 1m
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*LoginGraceTime(.*)$
+    line: LoginGraceTime 1m
+
+- name: set sshd compression yes
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*Compression(.*)$
+    line: Compression yes
+
+- name: set sshd ClientAliveCountMax to 2
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*ClientAliveCountMax(.*)$
+    line: ClientAliveCountMax 2
+
+- name: set sshd AllowTcpForwarding yes
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*AllowTcpForwarding(.*)$
+    line: AllowTcpForwarding yes
+
+- name: set sshd AllowStreamLocalForwarding no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*AllowStreamLocalForwarding(.*)$
+    line: AllowStreamLocalForwarding no
+
+- name: set sshd X11Forwarding no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*X11Forwarding(.*)$
+    line: X11Forwarding no
+
+- name: set sshd PermitTunnel no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*PermitTunnel(.*)$
+    line: PermitTunnel no
+
+- name: set sshd GatewayPorts no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*GatewayPorts(.*)$
+    line: GatewayPorts no
+
+- name: set sshd AllowAgentForwarding no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*AllowAgentForwarding(.*)$
+    line: AllowAgentForwarding no
+
+- name: set sshd MaxSessions to 2
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*MaxSessions(.*)$
+    line: MaxSessions 2
+
+- name: set sshd TCPKeepAlive to no
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*TCPKeepAlive(.*)$
+    line: TCPKeepAlive no
+
+- name: set sshd Ciphers
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*Ciphers(.*)$
+    line: Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
+
+- name: set sshd MACs
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*MACs(.*)$
+    line: MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com
+
+- name: set sshd KexAlgorithms
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*KexAlgorithms(.*)$
+    line: KexAlgorithms sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org
+
+- name: set sshd HostKeyAlgorithms
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*HostKeyAlgorithms(.*)$
+    line: HostKeyAlgorithms ssh-ed25519,ecdsa-sha2-nistp256
+
+- name: set sshd PubkeyAcceptedAlgorithms
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*PubkeyAcceptedAlgorithms(.*)$
+    line: PubkeyAcceptedAlgorithms ssh-ed25519,ecdsa-sha2-nistp256
+
+- name: set sshd AllowUsers
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/ssh/sshd_config
+    regexp: ^\#*AllowUsers(.*)$
+    line: AllowUsers {{ username }}
+
+- name: set SHA_CRYPT_MAX_ROUNDS
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/login.defs
+    regexp: ^\#*SHA_CRYPT_MAX_ROUNDS(.*)$
+    line: SHA_CRYPT_MAX_ROUNDS 4000000
+
+- name: set SHA_CRYPT_MIN_ROUNDS
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/login.defs
+    regexp: ^\#*SHA_CRYPT_MIN_ROUNDS(.*)$
+    line: SHA_CRYPT_MIN_ROUNDS 400000
+
+- name: set SHA_CRYPT_MIN_ROUNDS
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/login.defs
+    regexp: ^\#*SHA_CRYPT_MIN_ROUNDS(.*)$
+    line: SHA_CRYPT_MIN_ROUNDS 400000
+
+- name: set default umask to 027
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/profile
+    regexp: ^umask(.*)$
+    line: umask 027
+
+- name: Create journald drop-in directory
+  ansible.builtin.file:
+    path: /mnt/etc/systemd/journald.conf.d
+    state: directory
+
+- name: set journald size limits
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/journald.conf.d/10-limits.conf
+    content: |
+      [Journal]
+      SystemMaxUse=512M
+      RuntimeMaxUse=128M
+      MaxRetentionSec=1month
+
+- name: Create timesyncd drop-in directory
+  ansible.builtin.file:
+    path: /mnt/etc/systemd/timesyncd.conf.d
+    state: directory
+
+- name: set timesyncd NTP servers
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/timesyncd.conf.d/10-ntp.conf
+    content: |
+      [Time]
+      NTP=time.windows.com
+      FallbackNTP=pool.ntp.org
