@@ -156,7 +156,7 @@
       - /bin/bash
       - -c
       - |
-        pacman -S --noconfirm systemd-ukify sbctl
+        pacman -S --noconfirm systemd-ukify
         sudo -u tmpuser yay -Sy --noconfirm --aur mkinitcpio-systemd-extras
         ln -sf /usr/share/zoneinfo/CET /etc/localtime
         hwclock --systohc
@@ -164,6 +164,71 @@
         echo -e "{{root_pw}}\n{{root_pw}}" | passwd
         mkdir -p /efi/EFI/Linux
         mkinitcpio -P {{ kernel }} || true
+        mkdir -p /etc/kernel
+        cat > /etc/kernel/uki.conf <<'EOF'
+      [UKI]
+      SecureBootPrivateKey=/etc/kernel/secure-boot-private-key.pem
+      SecureBootCertificate=/etc/kernel/secure-boot-certificate.pem
+      EOF
+        ukify genkey --config /etc/kernel/uki.conf
+        /usr/lib/systemd/systemd-sbsign sign \
+          --private-key /etc/kernel/secure-boot-private-key.pem \
+          --certificate /etc/kernel/secure-boot-certificate.pem \
+          --output /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed \
+          /usr/lib/systemd/boot/efi/systemd-bootx64.efi
+        bootctl install --secure-boot-auto-enroll yes \
+          --certificate /etc/kernel/secure-boot-certificate.pem \
+          --private-key /etc/kernel/secure-boot-private-key.pem
+
+- name: Export Secure Boot db certificate for build output
+  command:
+    argv:
+      - /usr/bin/cp
+      - /mnt/etc/kernel/secure-boot-certificate.pem
+      - /tmp/secureboot-cert.pem
+
+- name: Create pacman hooks directory for Secure Boot
+  ansible.builtin.file:
+    path: /mnt/etc/pacman.d/hooks
+    state: directory
+
+- name: Install secure boot resign script
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/usr/local/bin/secure-boot-resign
+    mode: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      /usr/bin/mkinitcpio -P {{ kernel }}
+      /usr/lib/systemd/systemd-sbsign sign \
+        --private-key /etc/kernel/secure-boot-private-key.pem \
+        --certificate /etc/kernel/secure-boot-certificate.pem \
+        --output /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed \
+        /usr/lib/systemd/boot/efi/systemd-bootx64.efi
+
+- name: Add pacman hook to resign boot artifacts
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/pacman.d/hooks/90-sbctl-resign.hook
+    content: |
+      [Trigger]
+      Operation = Install
+      Operation = Upgrade
+      Type = Package
+      Target = {{ kernel }}
+      Target = mkinitcpio
+      Target = systemd
+      Target = systemd-boot
+
+      [Action]
+      Description = Regenerate UKIs and sign systemd-boot
+      When = PostTransaction
+      Exec = /usr/local/bin/secure-boot-resign
 
 - name: Fail if /mnt/usr/lib/initcpio/install/sd-network does not exist
   stat:
