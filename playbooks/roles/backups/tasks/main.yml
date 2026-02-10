@@ -7,7 +7,7 @@
       - /bin/bash
       - -c
       - |
-        pacman -Sy --noconfirm restic rclone
+        pacman -Sy --noconfirm restic
         useradd -m -N -s /usr/sbin/nologin restic
 
 - name: Create a directory if it does not exist
@@ -71,69 +71,6 @@
       [Install]
       WantedBy=multi-user.target
 
-- name: create restic-rclone@.service
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /mnt/etc/systemd/system/restic-rclone@.service
-    content: |
-      [Unit]
-      Description=Restic backup on %I through rclone serving restic rest server on localhost
-      After=syslog.target
-      After=network-online.target
-      Requires=restic-rclone-serve@%I.service
-      After=restic-rclone-serve@%I.service
-
-      [Service]
-      Type=oneshot
-      User=restic
-      ExecStart=/usr/bin/restic backup --files-from /etc/restic/%I.files --exclude-file /etc/restic/%I.exclude
-      EnvironmentFile=/etc/restic/%I.env
-      AmbientCapabilities=CAP_DAC_READ_SEARCH
-
-      [Install]
-      WantedBy=multi-user.target
-
-- name: create restic-rclone-serve@.service for backing up to rest server served by rclone
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /mnt/etc/systemd/system/restic-rclone-serve@.service
-    content: |
-      [Unit]
-      Description=Rclone serve restic on %I
-      After=syslog.target
-      After=network-online.target
-      BindsTo=restic@%I.service
-
-      [Service]
-      EnvironmentFile=/etc/systemd/system/proxy.env
-      Environment="RCLONE_ADDR=127.0.0.1:33333"
-      Environment="RCLONE_APPEND_ONLY=true"
-      Type=simple
-      User=restic
-      ExecStart=/usr/bin/rclone serve restic %I:
-      ExecReload=/bin/kill -USR1 $MAINPID
-
-      ; Use graceful shutdown with a reasonable timeout
-      KillMode=mixed
-      KillSignal=SIGTERM
-      TimeoutStopSec=5s
-
-      LimitNOFILE=1048576
-      LimitNPROC=512
-
-      PrivateTmp=true
-      PrivateDevices=true
-      ProtectSystem=full
-      CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-      AmbientCapabilities=CAP_NET_BIND_SERVICE
-      NoNewPrivileges=true
-
-      [Install]
-      WantedBy=multi-user.target
 
 - name: create restic-check@.service
   copy:
@@ -212,23 +149,6 @@
 
       [Timer]
       OnCalendar=*-*-* 10:00:00
-      Persistent=true
-
-      [Install]
-      WantedBy=timers.target
-
-- name: create restic-rclone@.timer
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /mnt/etc/systemd/system/restic-rclone@.timer
-    content: |
-      [Unit]
-      Description=Run Restic at 11:00
-
-      [Timer]
-      OnCalendar=*-*-* 11:00:00
       Persistent=true
 
       [Install]

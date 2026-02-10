@@ -9,17 +9,19 @@
       FILES=()
       HOOKS=(systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-network luks_unlocker sd-encrypt filesystems)
       COMPRESSION="zstd"
+      COMPRESSION_OPTIONS=(-9)
 
 - name: Set modules for fallback
   copy: 
     dest: /mnt/etc/mkinitcpio-fallback.conf
     force: yes
     content: |
-      MODULES=(hv_storvsc hv_vmbus)
+      MODULES=(hv_storvsc hv_vmbus hv_netvsc)
       BINARIES=()
       FILES=()
       HOOKS=(systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt filesystems)
       COMPRESSION="zstd"
+      COMPRESSION_OPTIONS=(-9)
 
 - name: Create /etc/cmdline.d directory
   ansible.builtin.file:
@@ -105,6 +107,7 @@
     path: /mnt/etc/initcpio/install/luks_unlocker
     mode: '0755'
 
+
 - name: Set luks_unlocker install
   copy: 
     dest: /mnt/usr/lib/systemd/system/luks_unlocker.service
@@ -147,6 +150,30 @@
   file:
     path: /mnt/usr/local/bin/luks_unlocker
     mode: '0755'
+
+- name: Install first-boot TPM enroll service
+  copy:
+    dest: /mnt/etc/systemd/system/enroll-tpm.service
+    force: yes
+    content: |
+      [Unit]
+      Description=Enroll TPM2 key for LUKS
+      ConditionFirstBoot=yes
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/luks_unlocker --enroll-tpm
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable first-boot TPM enroll service
+  command:
+    argv:
+      - /usr/bin/systemctl
+      - --root=/mnt
+      - enable
+      - enroll-tpm.service
 
 - name: Configure System
   command:

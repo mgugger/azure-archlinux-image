@@ -12,6 +12,10 @@
     root_pw: "{{ lookup('password', '/dev/null chars=ascii_letters,digit length=64') | lower }}"
     root_filesystem_label: "arch_os"
     create_minimal_image: false
+    enable_optional_caddy: false
+    enable_optional_cockpit: false
+    enable_optional_observability: false
+    enable_optional_rclone: false
   tasks:
   - name: Install unzip on install media
     pacman:
@@ -71,21 +75,31 @@
   - include_tasks: add-user-with-oath.yml
     when: create_minimal_image == false
 
-  - name: Observability
+  - name: Observability (optional)
     ansible.builtin.include_role:
-      name: observability
-    when: create_minimal_image == false
+      name: observability-optional
+    when: create_minimal_image == false and enable_optional_observability | default(false)
+
+  - name: Cockpit (optional)
+    ansible.builtin.include_role:
+      name: cockpit-optional
+    when: create_minimal_image == false and enable_optional_cockpit | default(false)
 
   - name: Caddy
     ansible.builtin.include_role:
       name: caddy
-    when: create_minimal_image == false
+    when: create_minimal_image == false and enable_optional_caddy | default(false)
 
 
   - name: Backups
     ansible.builtin.include_role:
       name: backups
     when: create_minimal_image == false
+
+  - name: Rclone for restic (optional)
+    ansible.builtin.include_role:
+      name: rclone-optional
+    when: create_minimal_image == false and enable_optional_rclone | default(false)
 
   # cleanup
   - name: Remove cached installed and orphaned packages

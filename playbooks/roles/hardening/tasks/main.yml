@@ -311,23 +311,6 @@
     regexp: ^umask(.*)$
     line: umask 027
 
-- name: Create journald drop-in directory
-  ansible.builtin.file:
-    path: /mnt/etc/systemd/journald.conf.d
-    state: directory
-
-- name: set journald size limits
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /mnt/etc/systemd/journald.conf.d/10-limits.conf
-    content: |
-      [Journal]
-      SystemMaxUse=512M
-      RuntimeMaxUse=128M
-      MaxRetentionSec=1month
-
 - name: Create timesyncd drop-in directory
   ansible.builtin.file:
     path: /mnt/etc/systemd/timesyncd.conf.d
