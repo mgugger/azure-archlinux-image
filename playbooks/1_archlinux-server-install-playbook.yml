@@ -56,6 +56,8 @@
 
   - include_tasks: other-optimizations.yml
 
+  - include_tasks: install-zram-generator.yml
+
   - name: Cloud-init setup
     ansible.builtin.include_role:
       name: cloud-init

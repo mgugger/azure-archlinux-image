@@ -1,0 +1,22 @@
+---
+- name: Install zram-generator
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        pacman -Sy --noconfirm zram-generator
+
+- name: Configure zram-generator
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/zram-generator.conf
+    content: |
+      [zram0]
+      zram-size = ram / 2
+      compression-algorithm = zstd(level=6)
+      swap-priority = 100
