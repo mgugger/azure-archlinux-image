@@ -58,7 +58,6 @@
       Description=Restic backup on %I through restic only
       After=syslog.target
       After=network-online.target
-      OnFailure=notify-email@restic@%I.service
 
       [Service]
       EnvironmentFile=/etc/systemd/system/proxy.env
@@ -83,7 +82,6 @@
       Description=Restic backup check on %I
       After=syslog.target
       After=network-online.target
-      OnFailure=notify-email@restic-check@%I.service
 
       [Service]
       EnvironmentFile=/etc/systemd/system/proxy.env
@@ -107,7 +105,6 @@
       Description=Restic Forget and Prune on %I
       After=syslog.target
       After=network-online.target
-      OnFailure=notify-email@restic-forget-and-prune@%I.service
 
       [Service]
       EnvironmentFile=/etc/systemd/system/proxy.env

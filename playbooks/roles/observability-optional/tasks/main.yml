@@ -1,52 +1,3 @@
----
-- name: Install mailx
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
-        pacman -Sy --noconfirm mailx
-
-- name: set mail.rc
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /etc/mail.rc
-    content: |
-      set mta=smtp://{{ smtp_user }}:{{ smtp_pass }}@{{ smtp_server_incl_port }}
-      set from="{{ smtp_sender }}"
-      set smtp-auth=login
-      set smtp-use-starttls
-      set v15-compat ssl-method=auto
-
-- name: set systemd service for email notification
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /etc/systemd/system/notify-email@.service
-    content: |
-      [Unit]
-      Description=Send fail email
-
-      [Service]
-      Type=oneshot
-      ExecStart=/usr/bin/bash -c '/usr/bin/systemctl status %i | /usr/bin/mailx -Ssendwait -s "[SYSTEMD] Fail %i on $(hostname)" {{ notification_email }}'
-      ProtectSystem=full
-      ProtectHome=yes
-      PrivateTmp=yes
-      NoNewPrivileges=yes
-      PrivateDevices=yes
-      ProtectKernelModules=yes
-      ProtectKernelTunables=yes
-      ProtectControlGroups=yes
-      ReadOnlyPaths=/
-      [Install]
-      WantedBy=multi-user.target
-
 - name: Install vector for sending logs
   command:
     argv:
@@ -119,8 +70,6 @@
     dest: /mnt/usr/lib/systemd/system/vector.service.d/http_proxy.conf
     content: |
       [Unit]
-      OnFailure=notify-email@vector.service
-
       [Service]
       EnvironmentFile=/etc/systemd/system/proxy.env
 

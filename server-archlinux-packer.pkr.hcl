@@ -71,64 +71,26 @@ variable "username" {
   }
 }
 
-variable "smtp_server_incl_port" {
-  type = string
-  default = "smtp.gmail.com:587"
-}
-
-variable "smtp_user" {
-  type = string
-  sensitive = true
-    validation {
-    condition     = length(var.smtp_user) > 0
-    error_message = "The smtp_user length cannot be empty."
-  }
-}
-
-variable "smtp_pass" {
-  type = string
-  sensitive = true
-    validation {
-    condition     = length(var.smtp_pass) > 0
-    error_message = "The smtp_pass length cannot be empty."
-  }
-}
-
-variable "notification_email" {
-  type = string
-  sensitive = true
-    validation {
-    condition     = length(var.notification_email) > 0
-    error_message = "The notification_email length cannot be empty."
-  }
-}
-
-variable "smtp_sender" {
-  type = string
-  sensitive = true
-    validation {
-    condition     = length(var.smtp_sender) > 0
-    error_message = "The smtp_sender length cannot be empty."
-  }
-}
 
 source "qemu" "azure_archlinux" {
   accelerator      = "kvm"
-  boot_command     = ["<enter><wait60><enter>", "curl -sfSLO http://{{ .HTTPIP }}:{{ .HTTPPort }}/packer.sh<enter><wait>", "chmod +x *.sh<enter>", "./packer.sh<enter>"]
+  boot_command     = ["<enter><wait60>", "curl -sfSLO http://{{ .HTTPIP }}:{{ .HTTPPort }}/packer.sh<enter><wait>", "chmod +x *.sh<enter>", "./packer.sh<enter>"]
   boot_wait        = "20s"
-  cpus             = 2
+  cpus             = 6
   disk_cache       = "unsafe"
   disk_compression = true
   disk_discard     = "unmap"
   disk_size        = "4000M"
-  firmware         = "/usr/share/OVMF/x64/OVMF_CODE.fd"
+  efi_boot         = true
+  efi_firmware_code = "/usr/share/OVMF/OVMF_CODE_4M.fd"
+  efi_firmware_vars = "/tmp/OVMF_VARS_4M.fd"
   format           = "raw"
-  headless         = true
+  headless         = false
   http_directory   = "http"
   iso_checksum     = "none"
-  iso_url          = "https://mirror.puzzle.ch/archlinux/iso/latest/archlinux-x86_64.iso"
+  iso_url          = "https://mirror.anquan.cl/archlinux/iso/latest/archlinux-x86_64.iso"
+  memory           = 2048
   output_directory = "./packer_output/qemu"
-  qemuargs         = [["-m", "2048M"], ["-boot", "menu=on,splash-time=10000"]]
   shutdown_command = "sudo systemctl poweroff"
   ssh_password     = "root"
   ssh_timeout      = "20m"
@@ -139,7 +101,20 @@ build {
   sources = ["source.qemu.azure_archlinux"]
 
   provisioner "ansible" {
-    extra_arguments = ["--extra-vars", "username=${var.username} luks_passphrase=${var.luks_passphrase} password=${var.password} smtp_user=${var.smtp_user} smtp_pass=${var.smtp_pass} smtp_sender=${var.smtp_sender} smtp_server_incl_port=${var.smtp_server_incl_port} password=${var.password} notification_email=${var.notification_email} ssh_authorized_keys_base64=${var.ssh_authorized_keys_base64} random_seed=${var.random_seed_for_oath}"]
+    user            = "root"
+    ansible_env_vars = [
+      "ANSIBLE_REMOTE_TMP=/tmp/.ansible/tmp",
+      "ANSIBLE_SHELL_EXECUTABLE=/bin/bash",
+      "ANSIBLE_SCP_IF_SSH=true",
+      "ANSIBLE_SCP_EXTRA_ARGS=-O"
+    ]
+    extra_arguments = [
+      "--extra-vars", "username=${var.username}",
+      "--extra-vars", "luks_passphrase=${var.luks_passphrase}",
+      "--extra-vars", "password=${var.password}",
+      "--extra-vars", "ssh_authorized_keys_base64=${var.ssh_authorized_keys_base64}",
+      "--extra-vars", "random_seed=${var.random_seed_for_oath}"
+    ]
     playbook_file   = "playbooks/1_archlinux-server-install-playbook.yml"
   }
 

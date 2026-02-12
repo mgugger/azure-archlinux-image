@@ -125,7 +125,7 @@
       vm.unprivileged_userfaultfd=0
       vm.mmap_rnd_bits=32
       vm.mmap_rnd_compat_bits=16
-      vm.swappiness=10
+      vm.swappiness=140
 
       # Allow for wireguard
       net.ipv4.ip_forward=1

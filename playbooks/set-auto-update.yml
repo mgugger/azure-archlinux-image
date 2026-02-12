@@ -39,9 +39,6 @@
     force: yes
     dest: /mnt/usr/lib/systemd/system/pacman-auto-update.service.d/http_proxy.conf
     content: |
-      [Unit]
-      OnFailure=notify-email@pacman-auto-update.service
-
       [Service]
       EnvironmentFile=/etc/systemd/system/proxy.env
 

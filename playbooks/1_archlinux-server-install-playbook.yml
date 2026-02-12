@@ -11,11 +11,14 @@
     zstd_compression: 6
     root_pw: "{{ lookup('password', '/dev/null chars=ascii_letters,digit length=64') | lower }}"
     root_filesystem_label: "arch_os"
-    create_minimal_image: false
+    enable_optional_cloud_init: true
+    enable_optional_oath: true
+    enable_optional_backups: false
     enable_optional_caddy: false
     enable_optional_cockpit: false
     enable_optional_observability: false
     enable_optional_rclone: false
+    enable_optional_auto_update: false
   tasks:
   - name: Install unzip on install media
     pacman:
@@ -65,41 +68,40 @@
   - name: Cloud-init setup
     ansible.builtin.include_role:
       name: cloud-init
-    when: create_minimal_image == false
+    when: enable_optional_cloud_init
 
   - name: Networking hardening
     ansible.builtin.include_role:
       name: networking-hardening
-    when: create_minimal_image == false
 
   - include_tasks: add-user-with-oath.yml
-    when: create_minimal_image == false
+    when: enable_optional_oath
 
   - name: Observability (optional)
     ansible.builtin.include_role:
       name: observability-optional
-    when: create_minimal_image == false and enable_optional_observability | default(false)
+    when: enable_optional_observability
 
   - name: Cockpit (optional)
     ansible.builtin.include_role:
       name: cockpit-optional
-    when: create_minimal_image == false and enable_optional_cockpit | default(false)
+    when: enable_optional_cockpit
 
   - name: Caddy
     ansible.builtin.include_role:
       name: caddy
-    when: create_minimal_image == false and enable_optional_caddy | default(false)
+    when: enable_optional_caddy
 
 
   - name: Backups
     ansible.builtin.include_role:
       name: backups
-    when: create_minimal_image == false
+    when: enable_optional_backups
 
   - name: Rclone for restic (optional)
     ansible.builtin.include_role:
       name: rclone-optional
-    when: create_minimal_image == false and enable_optional_rclone | default(false)
+    when: enable_optional_rclone
 
   # cleanup
   - name: Remove cached installed and orphaned packages
@@ -131,4 +133,4 @@
 
   # Install auto update and snapper latest to avoid unneeded snapshots in the image
   - include_tasks: set-auto-update.yml
-    when: create_minimal_image == false
+    when: enable_optional_auto_update

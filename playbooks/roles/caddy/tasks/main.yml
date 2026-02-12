@@ -47,9 +47,6 @@
     force: yes
     dest: /mnt/usr/lib/systemd/system/caddy.service.d/http_proxy.conf
     content: |
-      [Unit]
-      OnFailure=notify-email@caddy.service
-
       [Service]
       EnvironmentFile=/etc/systemd/system/proxy.env
 

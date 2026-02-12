@@ -10,7 +10,7 @@
       device: "{{ install_device_name }}"
       label: gpt
 
-- name: Create boot partition for uefi with a size of 256MB
+- name: Create boot partition for uefi with a size of 512MB
   when: not root_mounted
   community.general.parted:
     device: "{{ install_device_name }}"
@@ -19,7 +19,7 @@
     label: gpt
     name: esp
     flags: esp
-    part_end: 256MB
+    part_end: 512MB
     fs_type: fat32
 
 - name: Format efi boot partition
@@ -36,7 +36,7 @@
     number: 2
     state: present
     name: arch_os
-    part_start: 256MB
+    part_start: 512MB
     label: gpt
     part_end: 100%
     fs_type: btrfs
@@ -47,15 +47,15 @@
 - name: Create LUKS container with a passphrase
   community.crypto.luks_device:
     device: "{{ install_device_name }}{{ root_partition_number }}"
-    state: "present"
+    state: "opened"
     passphrase: "{{ luks_passphrase }}"
     type: "luks2"
     cipher: "aes-xts-plain64"
     keysize: 512
     hash: "sha512"
-    pbkdf: "argon2id"
-    pbkdf_memory: 131072
-    pbkdf_time: 1000
-    pbkdf_parallel: 2
-    state: "opened"
+    pbkdf:
+      algorithm: "argon2id"
+      memory: 131072
+      iteration_time: 5
+      parallel: 2
     name: "{{ luks_root_name }}"

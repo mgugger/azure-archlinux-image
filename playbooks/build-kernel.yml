@@ -4,10 +4,10 @@
     dest: /mnt/etc/mkinitcpio.conf
     force: yes
     content: |
-      MODULES=(hv_storvsc hv_vmbus hv_netvsc)
+      MODULES=(hv_storvsc hv_vmbus hv_netvsc zram)
       BINARIES=()
       FILES=()
-      HOOKS=(systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-network luks_unlocker sd-encrypt filesystems)
+      HOOKS=(systemd systemd-tool autodetect microcode modconf kms keyboard sd-vconsole block luks_unlocker sd-encrypt filesystems)
       COMPRESSION="zstd"
       COMPRESSION_OPTIONS=(-9)
 
@@ -16,10 +16,10 @@
     dest: /mnt/etc/mkinitcpio-fallback.conf
     force: yes
     content: |
-      MODULES=(hv_storvsc hv_vmbus hv_netvsc)
+      MODULES=(hv_storvsc hv_vmbus hv_netvsc zram)
       BINARIES=()
       FILES=()
-      HOOKS=(systemd autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt filesystems)
+      HOOKS=(systemd systemd-tool autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt filesystems)
       COMPRESSION="zstd"
       COMPRESSION_OPTIONS=(-9)
 
@@ -49,7 +49,7 @@
     force: yes
     dest: /mnt/etc/cmdline.d/default/root.conf
     content: |
-      root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+      root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw rd.neednet=1 console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
 
 - name: set cmdline fallback conf for UKI
   copy:
@@ -58,7 +58,25 @@
     force: yes
     dest: /mnt/etc/cmdline.d/fallback/root.conf
     content: |
-      rd.luks.name={{ luks_partition_uuid.stdout }}={{ luks_root_name }} root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+      rd.luks.name={{ luks_partition_uuid.stdout }}={{ luks_root_name }} root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw rd.neednet=1 console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+
+- name: Create systemd-networkd config directory
+  ansible.builtin.file:
+    path: /mnt/etc/systemd/network
+    state: directory
+
+- name: Configure initrd network (DHCP)
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/network/20-wired.network
+    content: |
+      [Match]
+      Name=en* eth*
+
+      [Network]
+      DHCP=yes
 
 - name: set /etc/mkinitcpio.d/{{ kernel }}.preset
   copy:
@@ -124,7 +142,7 @@
       Type=oneshot
       RemainAfterExit=yes
       ExecStartPre=/bin/sh -c 'echo "nameserver 168.63.129.16" > /etc/resolv.conf'
-      ExecStart=/usr/local/bin/luks_unlocker
+      ExecStart=/bin/sh -c '/usr/lib/systemd/systemd-cryptsetup attach {{ luks_root_name }} /dev/disk/by-uuid/{{ luks_partition_uuid.stdout }} - tpm2-device=auto || /usr/local/bin/luks_unlocker'
       Restart=on-failure           
       RestartSec=10s                
       StartLimitIntervalSec=60s    
@@ -162,7 +180,7 @@
 
       [Service]
       Type=oneshot
-      ExecStart=/usr/local/bin/luks_unlocker --enroll-tpm
+      ExecStart=/usr/bin/systemd-cryptenroll --tpm2-device=auto /dev/disk/by-uuid/{{ luks_partition_uuid.stdout }}
 
       [Install]
       WantedBy=multi-user.target
@@ -175,6 +193,22 @@
       - enable
       - enroll-tpm.service
 
+- name: Write /etc/kernel/uki.conf
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/kernel/uki.conf
+    content: |
+      [UKI]
+      SecureBootPrivateKey=/etc/kernel/secure-boot-private-key.pem
+      SecureBootCertificate=/etc/kernel/secure-boot-certificate.pem
+
+- name: Ensure /etc/initrd-release exists
+  ansible.builtin.file:
+    path: /mnt/etc/initrd-release
+    state: touch
+
 - name: Configure System
   command:
     argv:
@@ -183,8 +217,8 @@
       - /bin/bash
       - -c
       - |
-        pacman -S --noconfirm systemd-ukify
-        sudo -u tmpuser yay -Sy --noconfirm --aur mkinitcpio-systemd-extras
+        pacman -S --noconfirm systemd-ukify mkinitcpio-systemd-tool
+        systemctl --root=/mnt enable initrd-network.service
         ln -sf /usr/share/zoneinfo/CET /etc/localtime
         hwclock --systohc
         locale-gen
@@ -192,11 +226,6 @@
         mkdir -p /efi/EFI/Linux
         mkinitcpio -P {{ kernel }} || true
         mkdir -p /etc/kernel
-        cat > /etc/kernel/uki.conf <<'EOF'
-      [UKI]
-      SecureBootPrivateKey=/etc/kernel/secure-boot-private-key.pem
-      SecureBootCertificate=/etc/kernel/secure-boot-certificate.pem
-      EOF
         ukify genkey --config /etc/kernel/uki.conf
         /usr/lib/systemd/systemd-sbsign sign \
           --private-key /etc/kernel/secure-boot-private-key.pem \
@@ -257,15 +286,33 @@
       When = PostTransaction
       Exec = /usr/local/bin/secure-boot-resign
 
-- name: Fail if /mnt/usr/lib/initcpio/install/sd-network does not exist
+- name: Add pacman hook to re-enroll TPM after kernel changes
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/pacman.d/hooks/95-tpm2-reenroll.hook
+    content: |
+      [Trigger]
+      Operation = Install
+      Operation = Upgrade
+      Type = Package
+      Target = {{ kernel }}
+      Target = mkinitcpio
+      Target = systemd
+      Target = systemd-boot
+
+      [Action]
+      Description = Re-enroll TPM2 key for LUKS
+      When = PostTransaction
+      Exec = /usr/bin/systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7+11 /dev/disk/by-uuid/{{ luks_partition_uuid.stdout }}
+
+- name: Fail if /mnt/usr/lib/initcpio/install/systemd-tool does not exist
   stat:
-    path: /mnt/usr/lib/initcpio/install/sd-network
-  register: sd_network_file
+    path: /mnt/usr/lib/initcpio/install/systemd-tool
+  register: systemd_tool_file
 
-- name: Check if sd-network file exists
+- name: Check if systemd-tool hook exists
   fail:
-    msg: "/mnt/usr/lib/initcpio/install/sd-network does not exist"
-  when: not sd_network_file.stat.exists
-
-### TODO: Sign the UK with sbctl
-### See regional availability: https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-secure-boot-custom-uefi
+    msg: "/mnt/usr/lib/initcpio/install/systemd-tool does not exist"
+  when: not systemd_tool_file.stat.exists

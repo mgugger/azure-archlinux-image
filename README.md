@@ -36,22 +36,13 @@ sudo gpasswd -a $(whoami) kvm && sudo gpasswd -a $(whoami) libvirt && sudo reboo
 ```bash
 packer build \
 -var "username=$(whoami)" \
--var "ssh_authorized_keys_base64=$(cat ~/.ssh/authorized_keys | base64 -w0)" \
+-var "ssh_authorized_keys_base64=$(cat ~/.ssh/id_rsa.pub | base64 -w0)" \
 -var "storage_account_name=TODO" \
 -var "password=TODO" \
--var "random_seed_for_oath=$(openssl rand -hex 10)" \
+-var "random_seed_for_oath=TODO" \
+-var "resource_group_for_image=mdgcorp_storage" \
+-var "luks_passphrase=TODO" \
 server-archlinux-packer.pkr.hcl
-```
-
-For a minimal image (no Cockpit, proxy, or backups), use:
-```bash
-packer build \
-  -var "username=$(whoami)" \
-  -var "ssh_authorized_keys_base64=$(cat ~/.ssh/authorized_keys | base64 -w0)" \
-  -var "password=TODO" \
-  -var "luks_passphrase=TODO" \
-  -var "random_seed_for_oath=$(openssl rand -hex 10)" \
-  minimal-archlinux-packer.pkr.hcl
 ```
 
 # Post Deployment
@@ -80,11 +71,6 @@ runcmd:
 | ssh_authorized_keys_base64 | Base64-encoded SSH authorized keys for the admin user. |
 | storage_account_name | Storage account name used to upload the VHD. |
 | resource_group_for_image | Resource group where the managed image is created. |
-| smtp_server_incl_port | SMTP server with port (default: smtp.gmail.com:587). |
-| smtp_user | SMTP username for notifications. |
-| smtp_pass | SMTP password for notifications. |
-| smtp_sender | From address used in notifications. |
-| notification_email | Destination email address for notifications. |
 
 ## Packer variables (minimal image)
 

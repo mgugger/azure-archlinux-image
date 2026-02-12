@@ -44,7 +44,8 @@
       - /bin/bash
       - -c
       - |
-        cd yay-bin && sudo -u tmpuser makepkg -si --noconfirm
+        cd yay-bin
+        sudo -u tmpuser makepkg -s --noconfirm --skippgpcheck
 
 - name: remove cloned yay folder and remove tmpuser
   command: 
