@@ -1,6 +1,6 @@
 ---
 # playbook.yml
-- name: 'Provision Arch Linux Server'
+- name: "Provision Arch Linux Server"
   hosts: all
   become: true
   vars:
@@ -13,124 +13,123 @@
     root_filesystem_label: "arch_os"
     enable_optional_cloud_init: true
     enable_optional_oath: true
-    enable_optional_backups: false
+    enable_optional_backups: true
     enable_optional_caddy: false
     enable_optional_cockpit: false
     enable_optional_observability: false
     enable_optional_rclone: false
     enable_optional_auto_update: false
   tasks:
-  - name: Install unzip on install media
-    pacman:
-      name: unzip
-      state: present
-      update_cache: true
+    - name: Install unzip on install media
+      pacman:
+        name: unzip
+        state: present
+        update_cache: true
 
-  - name: Check device name {{ install_device_name }} exists
-    stat: "path={{ install_device_name }}"
-    register: device
-    failed_when: not device.stat.exists
+    - name: Check device name {{ install_device_name }} exists
+      stat: "path={{ install_device_name }}"
+      register: device
+      failed_when: not device.stat.exists
 
-  - name: Check if partitions are mounted
-    block:
-      - command: mountpoint -q /mnt
-        register: root_mountpoint
-        ignore_errors: true
-      - command: mountpoint -q /mnt/boot
-        register: boot_mountpoint
-        ignore_errors: true
-      - set_fact:
-          root_mounted: "{{ root_mountpoint.rc == 0 }}"
-          boot_mounted: "{{ boot_mountpoint.rc == 0 }}"
+    - name: Check if partitions are mounted
+      block:
+        - command: mountpoint -q /mnt
+          register: root_mountpoint
+          ignore_errors: true
+        - command: mountpoint -q /mnt/boot
+          register: boot_mountpoint
+          ignore_errors: true
+        - set_fact:
+            root_mounted: "{{ root_mountpoint.rc == 0 }}"
+            boot_mounted: "{{ boot_mountpoint.rc == 0 }}"
 
-  - include_tasks: prepare-disk-for-uefi.yml
+    - include_tasks: prepare-disk-for-uefi.yml
 
-  - include_tasks: format-and-mount-partitions.yml
+    - include_tasks: format-and-mount-partitions.yml
 
-  - name: Base OS setup
-    ansible.builtin.include_role:
-      name: base-os
+    - name: Base OS setup
+      ansible.builtin.include_role:
+        name: base-os
 
-  - include_tasks: install-yay.yml
+    - include_tasks: install-yay.yml
 
-  - include_tasks: build-kernel.yml
+    - include_tasks: install-zram-generator.yml
 
-  - include_tasks: set-bootloader.yml
+    - include_tasks: build-kernel.yml
 
-  - include_tasks: set-security-improvements.yml
+    - include_tasks: set-bootloader.yml
 
-  - include_tasks: set-apparmor.yml
+    - include_tasks: set-security-improvements.yml
 
-  - include_tasks: other-optimizations.yml
+    - include_tasks: set-apparmor.yml
 
-  - include_tasks: install-zram-generator.yml
+    - include_tasks: other-optimizations.yml
 
-  - name: Cloud-init setup
-    ansible.builtin.include_role:
-      name: cloud-init
-    when: enable_optional_cloud_init
+    - name: Cloud-init setup
+      ansible.builtin.include_role:
+        name: cloud-init
+      when: enable_optional_cloud_init
 
-  - name: Networking hardening
-    ansible.builtin.include_role:
-      name: networking-hardening
+    - name: Networking hardening
+      ansible.builtin.include_role:
+        name: networking-hardening
 
-  - include_tasks: add-user-with-oath.yml
-    when: enable_optional_oath
+    - include_tasks: add-user-with-oath.yml
+      when: enable_optional_oath
 
-  - name: Observability (optional)
-    ansible.builtin.include_role:
-      name: observability-optional
-    when: enable_optional_observability
+    - name: Observability (optional)
+      ansible.builtin.include_role:
+        name: observability-optional
+      when: enable_optional_observability
 
-  - name: Cockpit (optional)
-    ansible.builtin.include_role:
-      name: cockpit-optional
-    when: enable_optional_cockpit
+    - name: Cockpit (optional)
+      ansible.builtin.include_role:
+        name: cockpit-optional
+      when: enable_optional_cockpit
 
-  - name: Caddy
-    ansible.builtin.include_role:
-      name: caddy
-    when: enable_optional_caddy
+    - name: Caddy
+      ansible.builtin.include_role:
+        name: caddy
+      when: enable_optional_caddy
 
+    - name: Backups
+      ansible.builtin.include_role:
+        name: backups
+      when: enable_optional_backups
 
-  - name: Backups
-    ansible.builtin.include_role:
-      name: backups
-    when: enable_optional_backups
+    - name: Rclone for restic (optional)
+      ansible.builtin.include_role:
+        name: rclone-optional
+      when: enable_optional_rclone
 
-  - name: Rclone for restic (optional)
-    ansible.builtin.include_role:
-      name: rclone-optional
-    when: enable_optional_rclone
+    # cleanup
+    - name: Remove cached installed and orphaned packages
+      ignore_errors: true
+      command:
+        argv:
+          - /usr/bin/arch-chroot
+          - /mnt
+          - /bin/bash
+          - -c
+          - |
+            pacman -Scc --noconfirm
+            pacman -Rsn --noconfirm `pacman -Qqtd`
+            journalctl --vacuum-size=50M
+            rm -rf /usr/share/man/* /usr/share/info/* /usr/share/doc/*
+            rm -rf /var/tmp/*
+            rm -rf /tmp/*
+            pacman-optimize
+            rm -rf /var/cache/pacman/pkg/*
+            pacman -Rns ttf-* noto-fonts
+            userdel -r tmpuser
 
-  # cleanup
-  - name: Remove cached installed and orphaned packages
-    ignore_errors: true
-    command:
-      argv:
-        - /usr/bin/arch-chroot
-        - /mnt
-        - /bin/bash
-        - -c
-        - |
-          pacman -Scc --noconfirm
-          pacman -Rsn --noconfirm `pacman -Qqtd`
-          journalctl --vacuum-size=50M
-          rm -rf /usr/share/man/* /usr/share/info/* /usr/share/doc/*
-          rm -rf /var/tmp/*
-          rm -rf /tmp/*
-          pacman-optimize
-          rm -rf /var/cache/pacman/pkg/*
-          pacman -Rns ttf-* noto-fonts
-          userdel -r tmpuser
+    - name: remove tmpuser user passwordless sudo
+      ansible.builtin.lineinfile:
+        state: absent
+        path: /mnt/etc/sudoers
+        regexp: "^tmpuser ALL=(ALL:ALL) NOPASSWD:ALL"
+        line: "tmpuser ALL=(ALL:ALL) NOPASSWD:ALL"
 
-  - name: remove tmpuser user passwordless sudo
-    ansible.builtin.lineinfile:
-      state: absent
-      path: /mnt/etc/sudoers
-      regexp: '^tmpuser ALL=(ALL:ALL) NOPASSWD:ALL'
-      line: "tmpuser ALL=(ALL:ALL) NOPASSWD:ALL"
-
-  # Install auto update and snapper latest to avoid unneeded snapshots in the image
-  - include_tasks: set-auto-update.yml
-    when: enable_optional_auto_update
+    # Install auto update and snapper latest to avoid unneeded snapshots in the image
+    - include_tasks: set-auto-update.yml
+      when: enable_optional_auto_update

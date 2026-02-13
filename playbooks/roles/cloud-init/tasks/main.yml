@@ -35,7 +35,9 @@
         - default
       disable_root: true
       preserve_hostname: false
-      datasource_list: [ Azure ]
+      datasource_list: [ Azure, NoCloud, None ]
+      datasource_timeout: 15
+      datasource_max_wait: 20
 
       # The modules that run in the 'init' stage
       cloud_init_modules:

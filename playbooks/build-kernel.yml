@@ -1,25 +1,25 @@
 ---
 - name: Set modules
-  copy: 
+  copy:
     dest: /mnt/etc/mkinitcpio.conf
     force: yes
     content: |
-      MODULES=(hv_storvsc hv_vmbus hv_netvsc zram)
+      MODULES=(hv_storvsc hv_vmbus hv_netvsc zram virtio virtio_pci virtio_net virtio_blk)
       BINARIES=()
       FILES=()
-      HOOKS=(systemd systemd-tool autodetect microcode modconf kms keyboard sd-vconsole block luks_unlocker sd-encrypt filesystems)
+      HOOKS=(systemd systemd-tool autodetect microcode modconf kms keyboard sd-vconsole block initrd_zram luks_unlocker sd-encrypt filesystems)
       COMPRESSION="zstd"
       COMPRESSION_OPTIONS=(-9)
 
 - name: Set modules for fallback
-  copy: 
+  copy:
     dest: /mnt/etc/mkinitcpio-fallback.conf
     force: yes
     content: |
-      MODULES=(hv_storvsc hv_vmbus hv_netvsc zram)
+      MODULES=(hv_storvsc hv_vmbus hv_netvsc zram virtio virtio_pci virtio_net virtio_blk)
       BINARIES=()
       FILES=()
-      HOOKS=(systemd systemd-tool autodetect microcode modconf kms keyboard sd-vconsole block sd-encrypt filesystems)
+      HOOKS=(systemd systemd-tool autodetect microcode modconf kms keyboard sd-vconsole block initrd_zram sd-encrypt filesystems)
       COMPRESSION="zstd"
       COMPRESSION_OPTIONS=(-9)
 
@@ -28,12 +28,12 @@
     path: /mnt/etc/cmdline.d
     state: directory
 
-- name: Create /etc/cmdline.d directory
+- name: Create /etc/cmdline.d/default directory
   ansible.builtin.file:
     path: /mnt/etc/cmdline.d/default
     state: directory
 
-- name: Create /etc/cmdline.d directory
+- name: Create /etc/cmdline.d/fallback directory
   ansible.builtin.file:
     path: /mnt/etc/cmdline.d/fallback
     state: directory
@@ -65,7 +65,28 @@
     path: /mnt/etc/systemd/network
     state: directory
 
-- name: Configure initrd network (DHCP)
+- name: Create mkinitcpio-systemd-tool config directory
+  ansible.builtin.file:
+    path: /mnt/etc/mkinitcpio-systemd-tool/config
+    state: directory
+
+- name: Configure initrd network (DHCP) for systemd-tool
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/mkinitcpio-systemd-tool/config/initrd-network.network
+    content: |
+      [Match]
+      Name=en*
+      Name=eth*
+
+      [Network]
+      DHCP=yes
+      DNS=9.9.9.9
+      DNS=1.1.1.1
+
+- name: Configure runtime network (DHCP)
   copy:
     owner: root
     group: root
@@ -73,10 +94,13 @@
     dest: /mnt/etc/systemd/network/20-wired.network
     content: |
       [Match]
-      Name=en* eth*
+      Name=en*
+      Name=eth*
 
       [Network]
       DHCP=yes
+      DNS=9.9.9.9
+      DNS=1.1.1.1
 
 - name: set /etc/mkinitcpio.d/{{ kernel }}.preset
   copy:
@@ -94,8 +118,37 @@
       fallback_options="--cmdline /etc/cmdline.d/fallback/root.conf -S autodetect"
       fallback_config="/etc/mkinitcpio-fallback.conf"
 
+- name: Set initrd_zram install hook
+  copy:
+    dest: /mnt/etc/initcpio/install/initrd_zram
+    force: yes
+    content: |
+      #!/bin/bash
+
+      build() {
+          # zram-generator: generator binary, template service, config, and tools
+          add_binary /usr/lib/systemd/system-generators/zram-generator
+          add_systemd_unit systemd-zram-setup@.service
+          add_file /etc/systemd/zram-generator.conf
+          add_binary /usr/bin/zramctl
+          add_binary /usr/bin/mkswap
+          add_binary /usr/bin/swapon
+      }
+
+      help() {
+          cat <<HELPEOF
+      Includes zram-generator and its dependencies in the initramfs
+      so that zram swap is available during early boot.
+      HELPEOF
+      }
+
+- name: Ensure /etc/initcpio/install/initrd_zram is executable
+  file:
+    path: /mnt/etc/initcpio/install/initrd_zram
+    mode: "0755"
+
 - name: Set luks_unlocker install
-  copy: 
+  copy:
     dest: /mnt/etc/initcpio/install/luks_unlocker
     force: yes
     content: |
@@ -104,54 +157,71 @@
       build() {
           add_binary /usr/local/bin/luks_unlocker /usr/local/bin/luks_unlocker
           add_systemd_unit luks_unlocker.service
-          add_systemd_unit network-online.target
           add_systemd_unit cryptsetup-pre.target
-          add_systemd_unit systemd-networkd-wait-online.service
-          cd "$BUILDROOT/usr/lib/systemd/system/sysinit.target.wants"
-              ln -sf ../cryptsetup-pre.target cryptsetup-pre.target
-              ln -sf ../luks_unlocker.service luks_unlocker.service
-              ln -sf ../network-online.target network-online.target
-              ln -sf ../systemd-networkd-wait-online.service systemd-networkd-wait-online.service
+
+          # Enable the service by creating the .wants/ symlink.
+          # add_systemd_unit only copies the unit file — it does NOT process
+          # the [Install] section, so WantedBy= has no effect without this.
+          add_symlink "/usr/lib/systemd/system/initrd.target.wants/luks_unlocker.service" \
+                      "/usr/lib/systemd/system/luks_unlocker.service"
+
+          # libnss_files.so is loaded via dlopen() — needed for passwd/group
+          # lookups from /etc/passwd and /etc/group in the initramfs.
+          # nsswitch.conf is already provisioned by the base systemd hook.
+          local nss
+          for nss in /usr/lib/libnss_files.so*; do
+              [ -e "$nss" ] && add_binary "$nss"
+          done
+
+          # Add systemd-network and systemd-resolve users/groups/shadow to initramfs
+          # (systemd-sysusers is not available in early boot)
+          local user
+          for user in systemd-network systemd-resolve; do
+              grep -q "^${user}:" "$BUILDROOT/etc/passwd" || \
+                  grep "^${user}:" /etc/passwd >> "$BUILDROOT/etc/passwd"
+              grep -q "^${user}:" "$BUILDROOT/etc/group" || \
+                  grep "^${user}:" /etc/group >> "$BUILDROOT/etc/group"
+              grep -q "^${user}:" "$BUILDROOT/etc/shadow" 2>/dev/null || \
+                  grep "^${user}:" /etc/shadow >> "$BUILDROOT/etc/shadow" 2>/dev/null
+          done
       }
 
       help() {
           cat <<HELPEOF
-      This hook will attempt to decrypt the luks encryption.
       HELPEOF
       }
 
 - name: Ensure /etc/initcpio/install/luks_unlocker
   file:
     path: /mnt/etc/initcpio/install/luks_unlocker
-    mode: '0755'
-
+    mode: "0755"
 
 - name: Set luks_unlocker install
-  copy: 
+  copy:
     dest: /mnt/usr/lib/systemd/system/luks_unlocker.service
     force: yes
     content: |
       [Unit]
       Description=Unlock LUKS with KeyVault
-      Before=cryptsetup-pre.target
+      Before=cryptsetup-pre.target initrd-root-device.target
       DefaultDependencies=no
-      Wants=network-online.target
-      After=network-online.target systemd-networkd-wait-online.service
+      Wants=systemd-networkd.service systemd-resolved.service
+      After=systemd-networkd.service systemd-resolved.service
 
       [Service]
       Type=oneshot
       RemainAfterExit=yes
-      ExecStartPre=/bin/sh -c 'echo "nameserver 168.63.129.16" > /etc/resolv.conf'
-      ExecStart=/bin/sh -c '/usr/lib/systemd/systemd-cryptsetup attach {{ luks_root_name }} /dev/disk/by-uuid/{{ luks_partition_uuid.stdout }} - tpm2-device=auto || /usr/local/bin/luks_unlocker'
-      Restart=on-failure           
-      RestartSec=10s                
-      StartLimitIntervalSec=60s    
+
+      ExecStart=/bin/sh -c '/usr/lib/systemd/systemd-cryptsetup attach {{ luks_root_name }} /dev/disk/by-uuid/{{ luks_partition_uuid.stdout }} - tpm2-device=auto,headless=true || /usr/local/bin/luks_unlocker'
+      Restart=on-failure
+      RestartSec=10s
+      StartLimitIntervalSec=60s
       StartLimitBurst=6
       StandardError=journal+console
       StandardOutput=journal+console
 
       [Install]
-      WantedBy=cryptsetup-pre.target
+      WantedBy=initrd.target
 
 - name: Download luks_unlocker zip
   get_url:
@@ -167,7 +237,26 @@
 - name: Ensure luks_unlocker is executable
   file:
     path: /mnt/usr/local/bin/luks_unlocker
-    mode: '0755'
+    mode: "0755"
+
+- name: Install first-boot TPM enroll script
+  copy:
+    dest: /mnt/usr/local/bin/enroll-tpm-all.sh
+    mode: "0755"
+    force: yes
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      for dev in $(blkid -t TYPE=crypto_LUKS -o device); do
+        if cryptsetup isLuks --type luks2 "$dev" 2>/dev/null; then
+          if cryptsetup luksDump "$dev" | grep -q 'tpm2'; then
+            echo "TPM2 token already enrolled on $dev, skipping"
+          else
+            echo "Enrolling TPM2 on $dev"
+            systemd-cryptenroll --tpm2-device=auto "$dev"
+          fi
+        fi
+      done
 
 - name: Install first-boot TPM enroll service
   copy:
@@ -175,12 +264,12 @@
     force: yes
     content: |
       [Unit]
-      Description=Enroll TPM2 key for LUKS
+      Description=Enroll TPM2 key for all LUKS2 devices
       ConditionFirstBoot=yes
 
       [Service]
       Type=oneshot
-      ExecStart=/usr/bin/systemd-cryptenroll --tpm2-device=auto /dev/disk/by-uuid/{{ luks_partition_uuid.stdout }}
+      ExecStart=/usr/local/bin/enroll-tpm-all.sh
 
       [Install]
       WantedBy=multi-user.target
@@ -204,37 +293,166 @@
       SecureBootPrivateKey=/etc/kernel/secure-boot-private-key.pem
       SecureBootCertificate=/etc/kernel/secure-boot-certificate.pem
 
-- name: Ensure /etc/initrd-release exists
-  ansible.builtin.file:
-    path: /mnt/etc/initrd-release
-    state: touch
+- name: Install UKI tooling in chroot
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/pacman
+      - -S
+      - --noconfirm
+      - systemd-ukify
+      - mkinitcpio-systemd-tool
+      - sbsigntools
 
-- name: Configure System
+- name: Enable initrd-network.service in chroot
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/systemctl
+      - enable
+      - initrd-network.service
+
+- name: Enable systemd-resolved in chroot
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/systemctl
+      - enable
+      - systemd-resolved.service
+
+- name: Set timezone symlink in chroot
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/ln
+      - -sf
+      - /usr/share/zoneinfo/CET
+      - /etc/localtime
+
+- name: Sync hardware clock in chroot
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/hwclock
+      - --systohc
+
+- name: Generate locales in chroot
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/locale-gen
+
+- name: Set root password in chroot
   command:
     argv:
       - /usr/bin/arch-chroot
       - /mnt
       - /bin/bash
       - -c
-      - |
-        pacman -S --noconfirm systemd-ukify mkinitcpio-systemd-tool
-        systemctl --root=/mnt enable initrd-network.service
-        ln -sf /usr/share/zoneinfo/CET /etc/localtime
-        hwclock --systohc
-        locale-gen
-        echo -e "{{root_pw}}\n{{root_pw}}" | passwd
-        mkdir -p /efi/EFI/Linux
-        mkinitcpio -P {{ kernel }} || true
-        mkdir -p /etc/kernel
-        ukify genkey --config /etc/kernel/uki.conf
-        /usr/lib/systemd/systemd-sbsign sign \
-          --private-key /etc/kernel/secure-boot-private-key.pem \
-          --certificate /etc/kernel/secure-boot-certificate.pem \
-          --output /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed \
-          /usr/lib/systemd/boot/efi/systemd-bootx64.efi
-        bootctl install --secure-boot-auto-enroll yes \
-          --certificate /etc/kernel/secure-boot-certificate.pem \
-          --private-key /etc/kernel/secure-boot-private-key.pem
+      - echo -e "{{root_pw}}\n{{root_pw}}" | passwd
+
+- name: Ensure EFI Linux output directory exists in chroot
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/mkdir
+      - -p
+      - /efi/EFI/Linux
+
+- name: Ensure /etc/kernel exists in chroot
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/mkdir
+      - -p
+      - /etc/kernel
+
+- name: Generate Secure Boot keys with ukify in chroot
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/ukify
+      - genkey
+      - --config
+      - /etc/kernel/uki.conf
+
+- name: Generate UKIs with mkinitcpio preset in chroot
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/mkinitcpio
+      - -p
+      - "{{ kernel }}"
+
+- name: Sign systemd-boot EFI binary in chroot
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/lib/systemd/systemd-sbsign
+      - sign
+      - --private-key
+      - /etc/kernel/secure-boot-private-key.pem
+      - --certificate
+      - /etc/kernel/secure-boot-certificate.pem
+      - --output
+      - /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed
+      - /usr/lib/systemd/boot/efi/systemd-bootx64.efi
+
+- name: Show free space on ESP (/mnt/efi)
+  command:
+    argv:
+      - /usr/bin/df
+      - -h
+      - /mnt/efi
+  register: esp_df
+
+- name: Print ESP free space
+  debug:
+    var: esp_df.stdout_lines
+
+- name: Install systemd-boot with Secure Boot
+  command:
+    argv:
+      - /usr/bin/bootctl
+      - --root=/mnt
+      - install
+      - --certificate
+      - /mnt/etc/kernel/secure-boot-certificate.pem
+      - --private-key
+      - /mnt/etc/kernel/secure-boot-private-key.pem
+
+- name: Verify EFI Linux directory exists on ESP
+  stat:
+    path: /mnt/efi/EFI/Linux
+  register: efi_linux_dir
+
+- name: Fail if EFI Linux directory is missing
+  fail:
+    msg: "Missing /mnt/efi/EFI/Linux after kernel build; UKI artifacts were not generated on the ESP."
+  when: not efi_linux_dir.stat.exists or not efi_linux_dir.stat.isdir
+
+- name: Find generated UKI artifacts in EFI/Linux
+  find:
+    paths: /mnt/efi/EFI/Linux
+    patterns: "*.efi"
+    file_type: file
+  register: efi_uki_files
+
+- name: Fail if no UKI artifacts were generated in EFI/Linux
+  fail:
+    msg: "No UKI .efi files found in /mnt/efi/EFI/Linux after kernel build."
+  when: efi_uki_files.matched | int == 0
 
 - name: Export Secure Boot db certificate for build output
   command:
@@ -254,7 +472,7 @@
     group: root
     force: yes
     dest: /mnt/usr/local/bin/secure-boot-resign
-    mode: '0755'
+    mode: "0755"
     content: |
       #!/usr/bin/env bash
       set -euo pipefail
@@ -286,6 +504,27 @@
       When = PostTransaction
       Exec = /usr/local/bin/secure-boot-resign
 
+- name: Install TPM re-enroll script
+  copy:
+    dest: /mnt/usr/local/bin/reenroll-tpm-all.sh
+    mode: "0755"
+    owner: root
+    group: root
+    force: yes
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      for dev in $(blkid -t TYPE=crypto_LUKS -o device); do
+        if cryptsetup isLuks --type luks2 "$dev" 2>/dev/null; then
+          if cryptsetup luksDump "$dev" | grep -q 'tpm2'; then
+            echo "Re-enrolling TPM2 on $dev"
+            systemd-cryptenroll --wipe-slot=tpm2 --tpm2-device=auto --tpm2-pcrs=7+11 "$dev"
+          else
+            echo "No TPM2 token on $dev, skipping re-enroll"
+          fi
+        fi
+      done
+
 - name: Add pacman hook to re-enroll TPM after kernel changes
   copy:
     owner: root
@@ -303,9 +542,9 @@
       Target = systemd-boot
 
       [Action]
-      Description = Re-enroll TPM2 key for LUKS
+      Description = Re-enroll TPM2 key for all LUKS2 devices
       When = PostTransaction
-      Exec = /usr/bin/systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7+11 /dev/disk/by-uuid/{{ luks_partition_uuid.stdout }}
+      Exec = /usr/local/bin/reenroll-tpm-all.sh
 
 - name: Fail if /mnt/usr/lib/initcpio/install/systemd-tool does not exist
   stat:
