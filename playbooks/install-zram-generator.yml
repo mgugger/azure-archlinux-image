@@ -17,6 +17,6 @@
     dest: /mnt/etc/systemd/zram-generator.conf
     content: |
       [zram0]
-      zram-size = ram / 2
-      compression-algorithm = zstd(level=6)
+      zram-size = ram * 3 / 4
+      compression-algorithm = zstd
       swap-priority = 100

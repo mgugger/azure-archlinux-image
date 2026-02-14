@@ -4,10 +4,11 @@
     dest: /mnt/etc/mkinitcpio.conf
     force: yes
     content: |
-      MODULES=(hv_storvsc hv_vmbus hv_netvsc zram virtio virtio_pci virtio_net virtio_blk)
+      MODULES=(hv_storvsc hv_vmbus hv_netvsc hv_console keyboard zram btrfs)
       BINARIES=()
       FILES=()
-      HOOKS=(systemd systemd-tool autodetect microcode modconf kms keyboard sd-vconsole block initrd_zram luks_unlocker sd-encrypt filesystems)
+      FIRMWARE=()
+      HOOKS=(systemd systemd-tool autodetect modconf kms sd-vconsole block initrd_zram luks_unlocker sd-encrypt btrfs filesystems)
       COMPRESSION="zstd"
       COMPRESSION_OPTIONS=(-9)
 
@@ -16,10 +17,11 @@
     dest: /mnt/etc/mkinitcpio-fallback.conf
     force: yes
     content: |
-      MODULES=(hv_storvsc hv_vmbus hv_netvsc zram virtio virtio_pci virtio_net virtio_blk)
+      MODULES=(hv_storvsc hv_vmbus hv_netvsc hv_console keyboard zram btrfs)
       BINARIES=()
       FILES=()
-      HOOKS=(systemd systemd-tool autodetect microcode modconf kms keyboard sd-vconsole block initrd_zram sd-encrypt filesystems)
+      FIRMWARE=()
+      HOOKS=(systemd systemd-tool autodetect modconf kms sd-vconsole block initrd_zram sd-encrypt btrfs filesystems)
       COMPRESSION="zstd"
       COMPRESSION_OPTIONS=(-9)
 
@@ -115,7 +117,7 @@
       default_config="/etc/mkinitcpio.conf"
       default_options="--cmdline /etc/cmdline.d/default/root.conf"
       fallback_uki="/efi/EFI/Linux/arch-linux-fallback.efi"
-      fallback_options="--cmdline /etc/cmdline.d/fallback/root.conf -S autodetect"
+      fallback_options="--cmdline /etc/cmdline.d/fallback/root.conf"
       fallback_config="/etc/mkinitcpio-fallback.conf"
 
 - name: Set initrd_zram install hook
@@ -247,16 +249,7 @@
     content: |
       #!/bin/bash
       set -euo pipefail
-      for dev in $(blkid -t TYPE=crypto_LUKS -o device); do
-        if cryptsetup isLuks --type luks2 "$dev" 2>/dev/null; then
-          if cryptsetup luksDump "$dev" | grep -q 'tpm2'; then
-            echo "TPM2 token already enrolled on $dev, skipping"
-          else
-            echo "Enrolling TPM2 on $dev"
-            systemd-cryptenroll --tpm2-device=auto "$dev"
-          fi
-        fi
-      done
+      /usr/local/bin/luks_unlocker --enroll-tpm
 
 - name: Install first-boot TPM enroll service
   copy:
@@ -385,6 +378,21 @@
       - --config
       - /etc/kernel/uki.conf
 
+- name: Create systemd system.conf.d directory for TMPDIR override
+  ansible.builtin.file:
+    path: /mnt/etc/systemd/system.conf.d
+    state: directory
+
+- name: Set TMPDIR=/var/tmp globally for all systemd services
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system.conf.d/tmpdir.conf
+    content: |
+      [Manager]
+      DefaultEnvironment=TMPDIR=/var/tmp
+
 - name: Generate UKIs with mkinitcpio preset in chroot
   command:
     argv:
@@ -476,6 +484,7 @@
     content: |
       #!/usr/bin/env bash
       set -euo pipefail
+      export TMPDIR=/var/tmp
       /usr/bin/mkinitcpio -P {{ kernel }}
       /usr/lib/systemd/systemd-sbsign sign \
         --private-key /etc/kernel/secure-boot-private-key.pem \
@@ -518,7 +527,8 @@
         if cryptsetup isLuks --type luks2 "$dev" 2>/dev/null; then
           if cryptsetup luksDump "$dev" | grep -q 'tpm2'; then
             echo "Re-enrolling TPM2 on $dev"
-            systemd-cryptenroll --wipe-slot=tpm2 --tpm2-device=auto --tpm2-pcrs=7+11 "$dev"
+            systemd-cryptenroll --unlock-tpm2-device=auto --wipe-slot=tpm2 --tpm2-device=auto "$dev"
+            echo "TPM2 re-enrolled successfully on $dev"
           else
             echo "No TPM2 token on $dev, skipping re-enroll"
           fi

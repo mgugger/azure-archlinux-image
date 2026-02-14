@@ -130,6 +130,14 @@
         regexp: "^tmpuser ALL=(ALL:ALL) NOPASSWD:ALL"
         line: "tmpuser ALL=(ALL:ALL) NOPASSWD:ALL"
 
+    - name: Reset machine-id so ConditionFirstBoot=yes triggers on real first boot
+      copy:
+        dest: /mnt/etc/machine-id
+        content: "uninitialized\n"
+        owner: root
+        group: root
+        mode: "0444"
+
     # Install auto update and snapper latest to avoid unneeded snapshots in the image
     - include_tasks: set-auto-update.yml
       when: enable_optional_auto_update

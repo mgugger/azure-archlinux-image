@@ -31,6 +31,36 @@
       net.ipv4.ip_local_port_range = 10240 65535
       net.ipv4.tcp_abort_on_overflow = 1
 
+- name: Create /etc/systemd/system.conf.d/ for global systemd overrides
+  ansible.builtin.file:
+    path: /mnt/etc/systemd/system.conf.d/
+    state: directory
+
+- name: Set TMPDIR=/var/tmp globally for all systemd services
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system.conf.d/tmpdir.conf
+    content: |
+      [Manager]
+      DefaultEnvironment=TMPDIR=/var/tmp
+
+- name: Create /etc/systemd/system/tmp.mount.d/ for tmp mount overrides
+  ansible.builtin.file:
+    path: /mnt/etc/systemd/system/tmp.mount.d/
+    state: directory
+
+- name: Raise /tmp tmpfs size to 75%
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system/tmp.mount.d/size.conf
+    content: |
+      [Mount]
+      Options=mode=1777,strictatime,nosuid,nodev,size=75%
+
 - name: /etc/tmpfiles.d/ for systemd-tmpfile
   ansible.builtin.file:
     path: /mnt/etc/tmpfiles.d/
