@@ -44,6 +44,10 @@
   command: blkid -s UUID -o value {{ install_device_name }}{{ root_partition_number }}
   register: luks_partition_uuid
 
+- name: Get the Btrfs filesystem UUID from the unlocked root mapper
+  command: blkid -s UUID -o value /dev/mapper/{{ luks_root_name }}
+  register: btrfs_root_uuid
+
 - name: set cmdline root conf for UKI
   copy:
     owner: root
@@ -51,7 +55,7 @@
     force: yes
     dest: /mnt/etc/cmdline.d/default/root.conf
     content: |
-      rd.luks.name={{ luks_partition_uuid.stdout }}={{ luks_root_name }} root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw rd.neednet=1 console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+      rd.luks.uuid={{ luks_partition_uuid.stdout }} root=UUID={{ btrfs_root_uuid.stdout }} rootflags=subvol=@ rw rd.neednet=1 console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
 
 - name: set cmdline fallback conf for UKI
   copy:
@@ -60,7 +64,7 @@
     force: yes
     dest: /mnt/etc/cmdline.d/fallback/root.conf
     content: |
-      rd.luks.name={{ luks_partition_uuid.stdout }}={{ luks_root_name }} root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw rd.neednet=1 console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+      rd.luks.uuid={{ luks_partition_uuid.stdout }} root=UUID={{ btrfs_root_uuid.stdout }} rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
 
 - name: Create systemd-networkd config directory
   ansible.builtin.file:
