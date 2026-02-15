@@ -4,7 +4,7 @@
     dest: /mnt/etc/mkinitcpio.conf
     force: yes
     content: |
-      MODULES=(hv_storvsc hv_vmbus hv_netvsc hv_console keyboard zram btrfs)
+      MODULES=(hv_storvsc hv_vmbus hv_netvsc hv_utils keyboard zram btrfs)
       BINARIES=()
       FILES=()
       FIRMWARE=()
@@ -17,7 +17,7 @@
     dest: /mnt/etc/mkinitcpio-fallback.conf
     force: yes
     content: |
-      MODULES=(hv_storvsc hv_vmbus hv_netvsc hv_console keyboard zram btrfs)
+      MODULES=(hv_storvsc hv_vmbus hv_netvsc keyboard zram btrfs)
       BINARIES=()
       FILES=()
       FIRMWARE=()
@@ -51,7 +51,7 @@
     force: yes
     dest: /mnt/etc/cmdline.d/default/root.conf
     content: |
-      root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw rd.neednet=1 console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+      rd.luks.name={{ luks_partition_uuid.stdout }}={{ luks_root_name }} root=/dev/mapper/{{ luks_root_name }} rootflags=subvol=@ rw rd.neednet=1 console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
 
 - name: set cmdline fallback conf for UKI
   copy:
@@ -158,7 +158,10 @@
 
       build() {
           add_binary /usr/local/bin/luks_unlocker /usr/local/bin/luks_unlocker
+          add_binary /usr/lib/systemd/systemd-networkd-wait-online
           add_systemd_unit luks_unlocker.service
+          add_systemd_unit systemd-networkd-wait-online.service
+          add_systemd_unit systemd-resolved.service
           add_systemd_unit cryptsetup-pre.target
 
           # Enable the service by creating the .wants/ symlink.
@@ -205,20 +208,19 @@
     content: |
       [Unit]
       Description=Unlock LUKS with KeyVault
-      Before=cryptsetup-pre.target initrd-root-device.target
       DefaultDependencies=no
-      Wants=systemd-networkd.service systemd-resolved.service
-      After=systemd-networkd.service systemd-resolved.service
+      Wants=cryptsetup-pre.target systemd-networkd.service systemd-resolved.service systemd-networkd-wait-online.service
+      After=cryptsetup-pre.target systemd-networkd.service systemd-resolved.service systemd-networkd-wait-online.service
+      Before=systemd-cryptsetup@{{ luks_root_name }}.service initrd-root-device.target
+      Conflicts=systemd-cryptsetup@{{ luks_root_name }}.service
 
       [Service]
       Type=oneshot
       RemainAfterExit=yes
 
-      ExecStart=/bin/sh -c '/usr/lib/systemd/systemd-cryptsetup attach {{ luks_root_name }} /dev/disk/by-uuid/{{ luks_partition_uuid.stdout }} - tpm2-device=auto,headless=true || /usr/local/bin/luks_unlocker'
+      ExecStart=/bin/sh -c '/usr/lib/systemd/systemd-cryptsetup attach {{ luks_root_name }} /dev/disk/by-uuid/{{ luks_partition_uuid.stdout }} - tpm2-device=auto,headless=true || { /usr/lib/systemd/systemd-cryptsetup detach {{ luks_root_name }} 2>/dev/null; /usr/local/bin/luks_unlocker; }'
       Restart=on-failure
       RestartSec=10s
-      StartLimitIntervalSec=60s
-      StartLimitBurst=6
       StandardError=journal+console
       StandardOutput=journal+console
 
@@ -249,7 +251,16 @@
     content: |
       #!/bin/bash
       set -euo pipefail
-      /usr/local/bin/luks_unlocker --enroll-tpm
+      for dev in $(blkid -t TYPE=crypto_LUKS -o device); do
+        if cryptsetup isLuks --type luks2 "$dev" 2>/dev/null; then
+          if cryptsetup luksDump "$dev" | grep -q 'tpm2'; then
+            echo "TPM2 token already enrolled on $dev, skipping"
+          else
+            echo "Enrolling TPM2 on $dev"
+            systemd-cryptenroll --tpm2-device=auto "$dev"
+          fi
+        fi
+      done
 
 - name: Install first-boot TPM enroll service
   copy:
@@ -267,13 +278,23 @@
       [Install]
       WantedBy=multi-user.target
 
-- name: Enable first-boot TPM enroll service
+- name: Disable first-boot TPM enroll service by default
   command:
     argv:
       - /usr/bin/systemctl
       - --root=/mnt
-      - enable
+      - disable
       - enroll-tpm.service
+  failed_when: false
+
+- name: Ensure /etc/kernel exists in chroot
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/mkdir
+      - -p
+      - /etc/kernel
 
 - name: Write /etc/kernel/uki.conf
   copy:
@@ -286,7 +307,7 @@
       SecureBootPrivateKey=/etc/kernel/secure-boot-private-key.pem
       SecureBootCertificate=/etc/kernel/secure-boot-certificate.pem
 
-- name: Install UKI tooling in chroot
+- name: Install UKI tooling (base) in chroot
   command:
     argv:
       - /usr/bin/arch-chroot
@@ -295,8 +316,37 @@
       - -S
       - --noconfirm
       - systemd-ukify
-      - mkinitcpio-systemd-tool
       - sbsigntools
+
+- name: Generate Secure Boot keys manually (custom subject)
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/openssl
+      - req
+      - -new
+      - -x509
+      - -nodes
+      - -days
+      - "3650"
+      - -subj
+      - "/CN=Arch Secure Boot/O=mdgcorp/C=CH"
+      - -keyout
+      - /etc/kernel/secure-boot-private-key.pem
+      - -out
+      - /etc/kernel/secure-boot-certificate.pem
+
+- name: Install mkinitcpio-systemd-tool (triggers hooks)
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/pacman
+      - -S
+      - --noconfirm
+      - mkinitcpio-systemd-tool
+      - mokutil
 
 - name: Enable initrd-network.service in chroot
   command:
@@ -358,25 +408,6 @@
       - /usr/bin/mkdir
       - -p
       - /efi/EFI/Linux
-
-- name: Ensure /etc/kernel exists in chroot
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /usr/bin/mkdir
-      - -p
-      - /etc/kernel
-
-- name: Generate Secure Boot keys with ukify in chroot
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /usr/bin/ukify
-      - genkey
-      - --config
-      - /etc/kernel/uki.conf
 
 - name: Create systemd system.conf.d directory for TMPDIR override
   ansible.builtin.file:
@@ -440,6 +471,46 @@
       - --private-key
       - /mnt/etc/kernel/secure-boot-private-key.pem
 
+- name: Create systemd-boot-update drop-in directory
+  ansible.builtin.file:
+    path: /mnt/etc/systemd/system/systemd-boot-update.service.d
+    state: directory
+
+- name: Override systemd-boot-update to sign the bootloader
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/systemd/system/systemd-boot-update.service.d/signing.conf
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/bin/bootctl update --certificate /etc/kernel/secure-boot-certificate.pem --private-key /etc/kernel/secure-boot-private-key.pem
+
+- name: Install shim-signed from AUR using yay
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /bin/bash
+      - -c
+      - |
+        sudo -u tmpuser yay -S --noconfirm shim-signed
+
+- name: Convert certificate to DER for MokManager
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/openssl
+      - x509
+      - -in
+      - /etc/kernel/secure-boot-certificate.pem
+      - -outform
+      - DER
+      - -out
+      - /efi/mok-manager.crt
+
 - name: Verify EFI Linux directory exists on ESP
   stat:
     path: /mnt/efi/EFI/Linux
@@ -485,12 +556,26 @@
       #!/usr/bin/env bash
       set -euo pipefail
       export TMPDIR=/var/tmp
-      /usr/bin/mkinitcpio -P {{ kernel }}
-      /usr/lib/systemd/systemd-sbsign sign \
-        --private-key /etc/kernel/secure-boot-private-key.pem \
+
+      # Re-sign and install systemd-boot on ESP (updates BOOTX64.EFI)
+      /usr/bin/bootctl update \
         --certificate /etc/kernel/secure-boot-certificate.pem \
-        --output /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed \
-        /usr/lib/systemd/boot/efi/systemd-bootx64.efi
+        --private-key /etc/kernel/secure-boot-private-key.pem \
+        --no-pager || true
+
+      # Rename systemd-boot to grubx64.efi so shim loads it
+      cp /efi/EFI/BOOT/BOOTX64.EFI /efi/EFI/BOOT/grubx64.efi
+
+      # Install shim and MokManager
+      cp /usr/share/shim-signed/shimx64.efi /efi/EFI/BOOT/BOOTX64.EFI
+      cp /usr/share/shim-signed/mmx64.efi /efi/EFI/BOOT/mmx64.efi
+
+- name: Initial run of secure-boot-resign to setup shim
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/local/bin/secure-boot-resign
 
 - name: Add pacman hook to resign boot artifacts
   copy:
@@ -503,8 +588,6 @@
       Operation = Install
       Operation = Upgrade
       Type = Package
-      Target = {{ kernel }}
-      Target = mkinitcpio
       Target = systemd
       Target = systemd-boot
 
@@ -512,6 +595,109 @@
       Description = Regenerate UKIs and sign systemd-boot
       When = PostTransaction
       Exec = /usr/local/bin/secure-boot-resign
+
+- name: Install secure boot setup script
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/usr/local/sbin/setup-secureboot.sh
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      log() { echo "[setup-secureboot] $*"; }
+
+      CRT_PATH="/efi/mok-manager.crt"
+      PEM_PATH="/tmp/mok-check.pem"
+      BOOTLOADER="/efi/EFI/BOOT/grubx64.efi"
+
+      log "Verifying signatures against ${CRT_PATH}..."
+      openssl x509 -in "${CRT_PATH}" -inform DER -out "${PEM_PATH}"
+
+      sbverify --cert "${PEM_PATH}" "${BOOTLOADER}" >/dev/null
+      log "OK: ${BOOTLOADER}"
+
+      while read -r efi_file; do
+        case "${efi_file}" in
+          *"/BOOTX64.EFI"|*"/mmx64.efi"|*"/shimx64.efi"|*"/grubx64.efi") continue ;;
+        esac
+        sbverify --cert "${PEM_PATH}" "${efi_file}" >/dev/null
+        log "OK: ${efi_file}"
+      done < <(find /efi -type f -name "*.efi")
+
+      rm -f "${PEM_PATH}"
+
+      log "Importing MOK certificate..."
+      mokutil --import "${CRT_PATH}"
+
+- name: Install setup script to enroll arch_root TPM2 token
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/usr/local/sbin/setup-tpm-arch-root.sh
+    mode: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      log() { echo "[setup-tpm-arch-root] $*"; }
+
+      ROOT_NAME="arch_root"
+
+      extract_uuid() {
+        local f="$1"
+        [ -f "$f" ] || return 1
+        grep -oE "rd\.luks\.name=[0-9a-fA-F-]+=${ROOT_NAME}" "$f" \
+          | head -n1 \
+          | sed -E "s/^rd\.luks\.name=([0-9a-fA-F-]+)=${ROOT_NAME}$/\1/"
+      }
+
+      ROOT_UUID="$(extract_uuid /etc/cmdline.d/default/root.conf || true)"
+      if [ -z "${ROOT_UUID:-}" ]; then
+        ROOT_UUID="$(extract_uuid /etc/cmdline.d/fallback/root.conf || true)"
+      fi
+      if [ -z "${ROOT_UUID:-}" ]; then
+        ROOT_UUID="$(grep -oE "rd\.luks\.name=[0-9a-fA-F-]+=${ROOT_NAME}" /proc/cmdline \
+          | head -n1 \
+          | sed -E "s/^rd\.luks\.name=([0-9a-fA-F-]+)=${ROOT_NAME}$/\1/" || true)"
+      fi
+
+      if [ -z "${ROOT_UUID:-}" ]; then
+        log "Could not determine ${ROOT_NAME} LUKS UUID from cmdline files or /proc/cmdline."
+        exit 1
+      fi
+
+      ROOT_DEV="/dev/disk/by-uuid/${ROOT_UUID}"
+      if [ ! -e "$ROOT_DEV" ]; then
+        log "Device not found for UUID ${ROOT_UUID}: ${ROOT_DEV}"
+        exit 1
+      fi
+
+      ROOT_DEV_REAL="$(readlink -f "$ROOT_DEV")"
+      log "Resolved ${ROOT_NAME} to ${ROOT_DEV_REAL} (UUID=${ROOT_UUID})"
+
+      if ! cryptsetup isLuks --type luks2 "$ROOT_DEV_REAL" >/dev/null 2>&1; then
+        log "${ROOT_DEV_REAL} is not LUKS2. Aborting."
+        exit 1
+      fi
+
+      if cryptsetup luksDump "$ROOT_DEV_REAL" | grep -q "systemd-tpm2"; then
+        log "TPM2 token already present on ${ROOT_DEV_REAL}. Nothing to do."
+        exit 0
+      fi
+
+      log "Enrolling TPM2 token on ${ROOT_DEV_REAL} (interactive auth may be requested)..."
+      systemd-cryptenroll --tpm2-device=auto "$ROOT_DEV_REAL"
+
+      if cryptsetup luksDump "$ROOT_DEV_REAL" | grep -q "systemd-tpm2"; then
+        log "TPM2 enrollment successful for ${ROOT_NAME}."
+      else
+        log "TPM2 enrollment command returned, but token not detected."
+        exit 1
+      fi
 
 - name: Install TPM re-enroll script
   copy:
@@ -523,6 +709,15 @@
     content: |
       #!/bin/bash
       set -euo pipefail
+
+      # Non-interactive guard: skip when no controlling TTY is available.
+      # systemd-cryptenroll may prompt for an existing passphrase; in unattended
+      # contexts this would block or fail.
+      if [ ! -t 0 ] || [ ! -t 1 ]; then
+        echo "Skipping TPM2 re-enroll: non-interactive session (no TTY)"
+        exit 0
+      fi
+
       for dev in $(blkid -t TYPE=crypto_LUKS -o device); do
         if cryptsetup isLuks --type luks2 "$dev" 2>/dev/null; then
           if cryptsetup luksDump "$dev" | grep -q 'tpm2'; then

@@ -1,9 +1,9 @@
 ---
 - name: pacstrap base system with {{ kernel }} and apparmor
-  command: pacstrap /mnt base {{ kernel }} linux-firmware openssh base-devel apparmor btrfs-progs nano python sudo wireguard-tools audit
+  command: pacstrap /mnt base {{ kernel }} linux-firmware openssh base-devel apparmor btrfs-progs nano python sudo wireguard-tools audit systemd-ukify
 
 - name: Run genfstab
-  shell: 'genfstab -U /mnt > /mnt/etc/fstab'
+  shell: "genfstab -U /mnt > /mnt/etc/fstab"
 
 - name: "Read a file content"
   shell: |
@@ -63,7 +63,7 @@
 - name: use locale en_US.UTF-8
   ansible.builtin.lineinfile:
     path: /mnt/etc/locale.gen
-    regexp: '^en_US.UTF-8 UTF-8'
+    regexp: "^en_US.UTF-8 UTF-8"
     line: en_US.UTF-8 UTF-8
 
 - name: Set language to en_US.UTF-8 UTF-8
@@ -92,7 +92,7 @@
   ansible.builtin.lineinfile:
     path: /mnt/etc/pacman.conf
     regexp: ^\#*LocalFileSigLevel\s*=.*$
-    line: LocalFileSigLevel = Required
+    line: LocalFileSigLevel = Optional
 
 - name: Create resolved.conf.d directory
   ansible.builtin.file:

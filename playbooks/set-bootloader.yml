@@ -1,15 +1,4 @@
 ---
-- name: install systemd-boot to esp
-  command:
-    argv:
-      - /usr/bin/arch-chroot
-      - /mnt
-      - /bin/bash
-      - -c
-      - |
-        bootctl install
-        systemctl enable systemd-boot-update
-
 - name: set loader.conf loader entry
   copy:
     owner: root
@@ -17,31 +6,6 @@
     force: yes
     dest: /mnt/efi/loader/loader.conf
     content: |
-      default  arch.conf
       timeout  5
       console-mode max
       editor   no
-
-# - name: set arch.conf loader entry
-#   copy:
-#     owner: root
-#     group: root
-#     force: yes
-#     dest: /mnt/boot/loader/entries/arch.conf
-#     content: |
-#       title   Arch Linux
-#       linux   /vmlinuz-{{ kernel }}
-#       initrd  /initramfs-{{ kernel }}.img
-#       options root="LABEL={{ root_filesystem_label }}" rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
-
-# - name: set arch-fallback.conf loader entry
-#   copy:
-#     owner: root
-#     group: root
-#     force: yes
-#     dest: /mnt/boot/loader/entries/arch-fallback.conf
-#     content: |
-#       title   Arch Linux (fallback initramfs)
-#       linux   /vmlinuz-{{ kernel }}
-#       initrd  /initramfs-{{ kernel }}-fallback.img
-#       options root="LABEL={{ root_filesystem_label }}" rootflags=subvol=@ rw console=tty0 console=ttyS0,115200

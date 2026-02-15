@@ -121,6 +121,8 @@
             pacman-optimize
             rm -rf /var/cache/pacman/pkg/*
             pacman -Rns ttf-* noto-fonts
+            passwd -l root
+            rm -f /etc/ssh/ssh_host_*
             userdel -r tmpuser
 
     - name: remove tmpuser user passwordless sudo

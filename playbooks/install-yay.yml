@@ -1,6 +1,6 @@
 ---
 - name: Install yay
-  command: 
+  command:
     argv:
       - /usr/bin/arch-chroot
       - /mnt
@@ -10,7 +10,7 @@
         pacman -S --needed git fakeroot --noconfirm
 
 - name: clone yay
-  command: 
+  command:
     argv:
       - /usr/bin/arch-chroot
       - /mnt
@@ -21,7 +21,7 @@
         chmod 777 yay-bin
 
 - name: create tmpuser
-  command: 
+  command:
     argv:
       - /usr/bin/arch-chroot
       - /mnt
@@ -33,7 +33,7 @@
 - name: allow admin user passwordless sudo
   ansible.builtin.lineinfile:
     path: /mnt/etc/sudoers
-    regexp: '^tmpuser ALL=(ALL:ALL) NOPASSWD:ALL'
+    regexp: "^tmpuser ALL=(ALL:ALL) NOPASSWD:ALL"
     line: "tmpuser ALL=(ALL:ALL) NOPASSWD:ALL"
 
 - name: makepkg
@@ -45,10 +45,10 @@
       - -c
       - |
         cd yay-bin
-        sudo -u tmpuser makepkg -s --noconfirm --skippgpcheck
+        sudo -u tmpuser makepkg -si --noconfirm --skippgpcheck
 
 - name: remove cloned yay folder and remove tmpuser
-  command: 
+  command:
     argv:
       - /usr/bin/arch-chroot
       - /mnt
