@@ -233,7 +233,7 @@
 
 - name: Download luks_unlocker zip
   get_url:
-    url: https://github.com/mgugger/azure-keyvault-unlock-luks/releases/download/v0.0.1/azure-keyvault-unlock-luks_x86_64.zip
+    url: https://github.com/mgugger/azure-keyvault-unlock-luks/releases/download/v0.0.2/azure-keyvault-unlock-luks_x86_64.zip
     dest: /tmp/luks_unlocker.zip
 
 - name: Unpack luks_unlocker zip
@@ -255,16 +255,7 @@
     content: |
       #!/bin/bash
       set -euo pipefail
-      for dev in $(blkid -t TYPE=crypto_LUKS -o device); do
-        if cryptsetup isLuks --type luks2 "$dev" 2>/dev/null; then
-          if cryptsetup luksDump "$dev" | grep -q 'tpm2'; then
-            echo "TPM2 token already enrolled on $dev, skipping"
-          else
-            echo "Enrolling TPM2 on $dev"
-            systemd-cryptenroll --tpm2-device=auto "$dev"
-          fi
-        fi
-      done
+      /usr/local/bin/luks_unlocker --enroll-tpm
 
 - name: Install first-boot TPM enroll service
   copy:
