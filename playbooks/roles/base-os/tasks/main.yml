@@ -57,6 +57,7 @@
 
       [Network]
       DHCP=yes
+      DNS=168.63.129.16
       Domains=~azure.net ~azure.com ~azurewebsites.net ~windows.net ~azuresynapse.net ~azure-automation.net
       DNSDefaultRoute=false
 

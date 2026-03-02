@@ -19,7 +19,7 @@
     content: |
       MODULES=(hv_storvsc hv_vmbus hv_netvsc keyboard zram btrfs)
       BINARIES=()
-      FILES=()
+      FILES=(/etc/crypttab.initramfs)
       FIRMWARE=()
       HOOKS=(systemd systemd-tool autodetect modconf kms sd-vconsole block initrd_zram sd-encrypt btrfs filesystems)
       COMPRESSION="zstd"
@@ -55,7 +55,7 @@
     force: yes
     dest: /mnt/etc/cmdline.d/default/root.conf
     content: |
-      rd.luks.uuid={{ luks_partition_uuid.stdout }} root=UUID={{ btrfs_root_uuid.stdout }} rootflags=subvol=@ rw rd.neednet=1 console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+      rd.luks.crypttab=0 root=UUID={{ btrfs_root_uuid.stdout }} rootflags=subvol=@ rw rd.neednet=1 console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
 
 - name: set cmdline fallback conf for UKI
   copy:
@@ -64,7 +64,16 @@
     force: yes
     dest: /mnt/etc/cmdline.d/fallback/root.conf
     content: |
-      rd.luks.uuid={{ luks_partition_uuid.stdout }} root=UUID={{ btrfs_root_uuid.stdout }} rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+      rd.luks.crypttab=1 root=UUID={{ btrfs_root_uuid.stdout }} rootflags=subvol=@ rw console=tty0 console=ttyS0,115200 bgrt_disable lsm=landlock,lockdown,yama,integrity,apparmor,bpf slab_nomerge init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 pti=on randomize_kstack_offset=on vsyscall=none debugfs=off oops=panic intel_iommu=on amd_iommu=on
+
+- name: Configure initramfs crypttab for fallback sd-encrypt
+  copy:
+    owner: root
+    group: root
+    force: yes
+    dest: /mnt/etc/crypttab.initramfs
+    content: |
+      {{ luks_root_name }} UUID={{ luks_partition_uuid.stdout }} none luks
 
 - name: Create systemd-networkd config directory
   ansible.builtin.file:
@@ -89,24 +98,9 @@
 
       [Network]
       DHCP=yes
-      DNS=9.9.9.9
-      DNS=1.1.1.1
-
-- name: Configure runtime network (DHCP)
-  copy:
-    owner: root
-    group: root
-    force: yes
-    dest: /mnt/etc/systemd/network/20-wired.network
-    content: |
-      [Match]
-      Name=en*
-      Name=eth*
-
-      [Network]
-      DHCP=yes
-      DNS=9.9.9.9
-      DNS=1.1.1.1
+      DNS=168.63.129.16
+      Domains=~azure.net ~azure.com ~azurewebsites.net ~windows.net ~azuresynapse.net ~azure-automation.net
+      DNSDefaultRoute=false
 
 - name: set /etc/mkinitcpio.d/{{ kernel }}.preset
   copy:
@@ -213,10 +207,10 @@
       [Unit]
       Description=Unlock LUKS with KeyVault
       DefaultDependencies=no
-      Wants=cryptsetup-pre.target systemd-networkd.service systemd-resolved.service systemd-networkd-wait-online.service
-      After=cryptsetup-pre.target systemd-networkd.service systemd-resolved.service systemd-networkd-wait-online.service
-      Before=systemd-cryptsetup@{{ luks_root_name }}.service initrd-root-device.target
-      Conflicts=systemd-cryptsetup@{{ luks_root_name }}.service
+      Wants=cryptsetup-pre.target initrd-network.service systemd-networkd.service systemd-resolved.service systemd-networkd-wait-online.service
+      After=cryptsetup-pre.target initrd-network.service systemd-networkd.service systemd-resolved.service systemd-networkd-wait-online.service
+      Before=initrd-root-device.target
+      StartLimitIntervalSec=0
 
       [Service]
       Type=oneshot
