@@ -19,6 +19,9 @@
     enable_optional_observability: false
     enable_optional_rclone: false
     enable_optional_auto_update: false
+    enable_minimal_image_cleanup: true
+    enable_remove_build_toolchain: true
+    enable_remove_linux_firmware: true
   tasks:
     - name: Install unzip on install media
       pacman:
@@ -112,18 +115,29 @@
           - /bin/bash
           - -c
           - |
-            pacman -Scc --noconfirm
-            pacman -Rsn --noconfirm `pacman -Qqtd`
-            journalctl --vacuum-size=50M
+            pacman -Scc --noconfirm || true
+            pacman -Qtdq | xargs -r pacman -Rns --noconfirm || true
+            {% if enable_remove_build_toolchain | default(true) %}
+            pacman -Rns --noconfirm base-devel git fakeroot || true
+            {% endif %}
+            journalctl --rotate || true
+            journalctl --vacuum-size=1M || true
+            rm -rf /var/lib/systemd/coredump/* || true
+            cloud-init clean --logs --seed --machine-id || true
+            rm -rf /var/lib/cloud/* /var/log/cloud-init* || true
+            rm -rf /home/tmpuser/.cache/* || true
             rm -rf /usr/share/man/* /usr/share/info/* /usr/share/doc/*
             rm -rf /var/tmp/*
             rm -rf /tmp/*
-            pacman-optimize
+            pacman-optimize || true
             rm -rf /var/cache/pacman/pkg/*
-            pacman -Rns ttf-* noto-fonts
+            pacman -Rns --noconfirm ttf-* noto-fonts || true
+            {% if enable_remove_linux_firmware | default(false) %}
+            pacman -Rns --noconfirm linux-firmware || true
+            {% endif %}
             passwd -l root
             rm -f /etc/ssh/ssh_host_*
-            userdel -r tmpuser
+            userdel -r tmpuser || true
 
     - name: remove tmpuser user passwordless sudo
       ansible.builtin.lineinfile:
