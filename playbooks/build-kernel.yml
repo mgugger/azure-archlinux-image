@@ -702,16 +702,16 @@
       # Non-interactive guard: skip when no controlling TTY is available.
       # systemd-cryptenroll may prompt for an existing passphrase; in unattended
       # contexts this would block or fail.
-      if [ ! -t 0 ] || [ ! -t 1 ]; then
-        echo "Skipping TPM2 re-enroll: non-interactive session (no TTY)"
-        exit 0
-      fi
+      # if [ ! -t 0 ] || [ ! -t 1 ]; then
+      #   echo "Skipping TPM2 re-enroll: non-interactive session (no TTY)"
+      #   exit 0
+      # fi
 
       for dev in $(blkid -t TYPE=crypto_LUKS -o device); do
         if cryptsetup isLuks --type luks2 "$dev" 2>/dev/null; then
           if cryptsetup luksDump "$dev" | grep -q 'tpm2'; then
             echo "Re-enrolling TPM2 on $dev"
-            systemd-cryptenroll --unlock-tpm2-device=auto --wipe-slot=tpm2 --tpm2-device=auto "$dev"
+            systemd-cryptenroll --unlock-tpm2-device=auto --wipe-slot=tpm2 --tpm2-pcrs=7+9 --tpm2-device=auto "$dev"
             echo "TPM2 re-enrolled successfully on $dev"
           else
             echo "No TPM2 token on $dev, skipping re-enroll"
