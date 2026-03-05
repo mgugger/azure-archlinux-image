@@ -110,7 +110,11 @@
     dest: /mnt/etc/mkinitcpio.d/{{ kernel }}.preset
     content: |
       ALL_kver="/boot/vmlinuz-{{ kernel }}"
+      {% if enable_fallback_kernel | default(true) | bool %}
       PRESETS=('default' 'fallback')
+      {% else %}
+      PRESETS=('default')
+      {% endif %}
       default_uki="/efi/EFI/Linux/arch-linux.efi"
       default_config="/etc/mkinitcpio.conf"
       default_options="--cmdline /etc/cmdline.d/default/root.conf"
@@ -157,6 +161,7 @@
       build() {
           add_binary /usr/local/bin/luks_unlocker /usr/local/bin/luks_unlocker
           add_binary /usr/lib/systemd/systemd-networkd-wait-online
+          add_binary /usr/bin/systemd-cryptenroll
           add_systemd_unit luks_unlocker.service
           add_systemd_unit systemd-networkd-wait-online.service
           add_systemd_unit systemd-resolved.service
@@ -216,7 +221,7 @@
       Type=oneshot
       RemainAfterExit=yes
 
-      ExecStart=/bin/sh -c '/usr/lib/systemd/systemd-cryptsetup attach {{ luks_root_name }} /dev/disk/by-uuid/{{ luks_partition_uuid.stdout }} - tpm2-device=auto,headless=true || { /usr/lib/systemd/systemd-cryptsetup detach {{ luks_root_name }} 2>/dev/null; /usr/local/bin/luks_unlocker; }'
+      ExecStart=/bin/sh -c 'if /usr/lib/systemd/systemd-cryptsetup attach {{ luks_root_name }} /dev/disk/by-uuid/{{ luks_partition_uuid.stdout }} - tpm2-device=auto,headless=true; then exit 0; fi; /usr/lib/systemd/systemd-cryptsetup detach {{ luks_root_name }} 2>/dev/null || true; /usr/local/bin/luks_unlocker || exit $?; /usr/local/bin/luks_unlocker --enroll-tpm || echo "luks_unlocker: TPM enrollment failed in initramfs; continuing with unlocked root" >&2'
       Restart=on-failure
       RestartSec=10s
       StandardError=journal+console

@@ -3,6 +3,7 @@
   set_fact:
     root_partition_number: "2"
     luks_root_name: "arch_root"
+    efi_partition_size_mb: "{{ 512 if (enable_fallback_kernel | default(true) | bool) else 256 }}"
 
 - name: Label {{ install_device_name }} as gpt
   when: not root_mounted
@@ -10,7 +11,7 @@
       device: "{{ install_device_name }}"
       label: gpt
 
-- name: Create boot partition for uefi with a size of 512MB
+- name: Create boot partition for uefi
   when: not root_mounted
   community.general.parted:
     device: "{{ install_device_name }}"
@@ -19,7 +20,7 @@
     label: gpt
     name: esp
     flags: esp
-    part_end: 512MB
+    part_end: "{{ efi_partition_size_mb }}MB"
     fs_type: fat32
 
 - name: Format efi boot partition
@@ -36,7 +37,7 @@
     number: 2
     state: present
     name: arch_os
-    part_start: 512MB
+    part_start: "{{ efi_partition_size_mb }}MB"
     label: gpt
     part_end: 100%
     fs_type: btrfs

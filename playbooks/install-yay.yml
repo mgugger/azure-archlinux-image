@@ -8,6 +8,7 @@
       - -c
       - |
         pacman -S --needed git fakeroot --noconfirm
+        pacman -S --needed base-devel --noconfirm
 
 - name: clone yay
   command:

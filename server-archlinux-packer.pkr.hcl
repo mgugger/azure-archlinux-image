@@ -12,7 +12,7 @@ packer {
 }
 
 variable "password" {
-  type = string
+  type      = string
   sensitive = true
   validation {
     condition     = length(var.password) > 0
@@ -21,7 +21,7 @@ variable "password" {
 }
 
 variable "luks_passphrase" {
-  type = string
+  type      = string
   sensitive = true
   validation {
     condition     = length(var.luks_passphrase) > 0
@@ -30,7 +30,7 @@ variable "luks_passphrase" {
 }
 
 variable "random_seed_for_oath" {
-  type = string
+  type      = string
   sensitive = true
   validation {
     condition     = length(var.random_seed_for_oath) > 0
@@ -47,7 +47,7 @@ variable "resource_group_for_image" {
 }
 
 variable "ssh_authorized_keys_base64" {
-  type = string
+  type      = string
   sensitive = true
   validation {
     condition     = length(var.ssh_authorized_keys_base64) > 0
@@ -71,37 +71,42 @@ variable "username" {
   }
 }
 
+variable "enable_fallback_kernel" {
+  type    = bool
+  default = false
+}
+
 
 source "qemu" "azure_archlinux" {
-  accelerator      = "kvm"
-  boot_command     = ["<enter><wait60>", "curl -sfSLO http://{{ .HTTPIP }}:{{ .HTTPPort }}/packer.sh<enter><wait>", "chmod +x *.sh<enter>", "./packer.sh<enter>"]
-  boot_wait        = "20s"
-  cpus             = 6
-  disk_cache       = "unsafe"
-  disk_compression = true
-  disk_discard     = "unmap"
-  disk_size        = "4000M"
-  efi_boot         = true
+  accelerator       = "kvm"
+  boot_command      = ["<enter><wait60>", "curl -sfSLO http://{{ .HTTPIP }}:{{ .HTTPPort }}/packer.sh<enter><wait>", "chmod +x *.sh<enter>", "./packer.sh<enter>"]
+  boot_wait         = "20s"
+  cpus              = 6
+  disk_cache        = "unsafe"
+  disk_compression  = true
+  disk_discard      = "unmap"
+  disk_size         = "2000M"
+  efi_boot          = true
   efi_firmware_code = "/usr/share/OVMF/OVMF_CODE_4M.fd"
   efi_firmware_vars = "/tmp/OVMF_VARS_4M.fd"
-  format           = "raw"
-  headless         = false
-  http_directory   = "http"
-  iso_checksum     = "none"
-  iso_url          = "https://mirror.anquan.cl/archlinux/iso/latest/archlinux-x86_64.iso"
-  memory           = 2048
-  output_directory = "./packer_output/qemu"
-  shutdown_command = "sudo systemctl poweroff"
-  ssh_password     = "root"
-  ssh_timeout      = "20m"
-  ssh_username     = "root"
+  format            = "raw"
+  headless          = false
+  http_directory    = "http"
+  iso_checksum      = "none"
+  iso_url           = "https://mirror.anquan.cl/archlinux/iso/latest/archlinux-x86_64.iso"
+  memory            = 2048
+  output_directory  = "./packer_output/qemu"
+  shutdown_command  = "sudo systemctl poweroff"
+  ssh_password      = "root"
+  ssh_timeout       = "20m"
+  ssh_username      = "root"
 }
 
 build {
   sources = ["source.qemu.azure_archlinux"]
 
   provisioner "ansible" {
-    user            = "root"
+    user = "root"
     ansible_env_vars = [
       "ANSIBLE_REMOTE_TMP=/tmp/.ansible/tmp",
       "ANSIBLE_SHELL_EXECUTABLE=/bin/bash",
@@ -113,9 +118,10 @@ build {
       "--extra-vars", "luks_passphrase=${var.luks_passphrase}",
       "--extra-vars", "password=${var.password}",
       "--extra-vars", "ssh_authorized_keys_base64=${var.ssh_authorized_keys_base64}",
-      "--extra-vars", "random_seed=${var.random_seed_for_oath}"
+      "--extra-vars", "random_seed=${var.random_seed_for_oath}",
+      "--extra-vars", "enable_fallback_kernel=${var.enable_fallback_kernel}"
     ]
-    playbook_file   = "playbooks/1_archlinux-server-install-playbook.yml"
+    playbook_file = "playbooks/1_archlinux-server-install-playbook.yml"
   }
 
   post-processor "shell-local" {
