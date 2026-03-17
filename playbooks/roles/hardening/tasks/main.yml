@@ -13,7 +13,7 @@
     - hfsplus
     - udf
     - ufs
-    - squashfs
+    # squashfs: not blacklisted — needed for boot fallback root
     - minix
     - reiserfs
     - befs

@@ -1,0 +1,79 @@
+#!/bin/bash
+# squashfs-overlay — mkinitcpio runtime hook
+# Mounts squashfs + overlayfs as root when no data disk root is available
+
+run_hook() {
+    # Only activate if arch-root-discover set squashfs mode
+    case "${ARCH_BOOT_MODE:-}" in
+        squashfs|squashfs-provision) ;;
+        *) return 0 ;;
+    esac
+
+    msg "squashfs-overlay: Setting up squashfs + overlayfs root..."
+
+    local boot_root=""
+
+    # Find the boot disk partition containing the squashfs
+    # Try to find by label first, then by scanning
+    boot_root=$(blkid -L "archboot" 2>/dev/null || true)
+    if [[ -z "$boot_root" ]]; then
+        # Scan for the partition containing airootfs.sfs
+        for dev in /dev/sda2 /dev/sda1 /dev/nvme0n1p2; do
+            if [[ -b "$dev" ]]; then
+                mkdir -p /run/archboot
+                if mount -o ro "$dev" /run/archboot 2>/dev/null; then
+                    if [[ -f /run/archboot/sfs/airootfs.sfs ]]; then
+                        boot_root="$dev"
+                        umount /run/archboot
+                        break
+                    fi
+                    umount /run/archboot 2>/dev/null || true
+                fi
+            fi
+        done
+    fi
+
+    if [[ -z "$boot_root" ]]; then
+        msg "squashfs-overlay: ERROR — Cannot find boot partition with squashfs!"
+        return 1
+    fi
+
+    # Mount the boot partition read-only
+    mkdir -p /run/archboot
+    mount -o ro "${boot_root}" /run/archboot
+
+    # Mount the squashfs
+    mkdir -p /run/archiso/sfs
+    mount -o ro,loop /run/archboot/sfs/airootfs.sfs /run/archiso/sfs
+
+    # Create tmpfs for overlay upper + work dirs
+    mkdir -p /run/archiso/cowspace
+    mount -t tmpfs -o size=75% cowspace /run/archiso/cowspace
+    mkdir -p /run/archiso/cowspace/{upper,work}
+
+    # Mount overlayfs as new root
+    mount -t overlay overlay \
+        -o lowerdir=/run/archiso/sfs,upperdir=/run/archiso/cowspace/upper,workdir=/run/archiso/cowspace/work \
+        /new_root
+
+    # Persist boot mode info for userspace services
+    mkdir -p /new_root/run/arch-root
+    echo "${ARCH_BOOT_MODE}" > /new_root/run/arch-root/boot-mode
+
+    # Pass through raw disk info if present
+    if [[ -f /run/arch-root/raw-data-disk ]]; then
+        cp /run/arch-root/raw-data-disk /new_root/run/arch-root/raw-data-disk
+    fi
+
+    # Bind-mount persistent log/cache from boot disk if subvolumes exist
+    if mount -o compress=zstd:6,noatime,nosuid,noexec,nodev,subvol=@log \
+         "${boot_root}" /new_root/var/log 2>/dev/null; then
+        msg "squashfs-overlay: Mounted persistent /var/log"
+    fi
+    if mount -o compress=zstd:6,noatime,nosuid,nodev,subvol=@cache \
+         "${boot_root}" /new_root/var/cache 2>/dev/null; then
+        msg "squashfs-overlay: Mounted persistent /var/cache"
+    fi
+
+    msg "squashfs-overlay: Root overlay ready (mode: ${ARCH_BOOT_MODE})"
+}

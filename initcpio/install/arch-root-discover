@@ -1,0 +1,63 @@
+#!/bin/bash
+# arch-root-discover — mkinitcpio install hook
+# Adds disk discovery and vTPM unlock capabilities to initramfs
+
+build() {
+    # Kernel modules for Azure + crypto + squashfs
+    add_module hv_vmbus
+    add_module hv_storvsc
+    add_module hv_netvsc
+    add_module hv_utils
+    add_module squashfs
+    add_module overlay
+    add_module loop
+    add_module dm-crypt
+    add_module tpm_crb
+    add_module tpm_tis
+
+    # Binaries needed for disk discovery and LUKS
+    add_binary cryptsetup
+    add_binary btrfs
+    add_binary blkid
+    add_binary udevadm
+    add_binary readlink
+    add_binary mkdir
+    add_binary mount
+    add_binary umount
+    add_binary echo
+
+    # systemd-cryptsetup for TPM2 unlock
+    add_binary systemd-cryptsetup
+    add_binary /usr/lib/systemd/systemd-cryptsetup
+
+    # systemd-ask-password for serial console passphrase fallback
+    add_binary systemd-ask-password
+    add_binary /usr/lib/systemd/systemd-tty-ask-password-agent
+
+    # TPM2 libraries
+    for lib in /usr/lib/libtss2*.so*; do
+        [[ -f "$lib" ]] && add_file "$lib"
+    done
+
+    # TCTI for TPM device access
+    for lib in /usr/lib/libtss2-tcti-device.so*; do
+        [[ -f "$lib" ]] && add_file "$lib"
+    done
+
+    add_runscript
+}
+
+help() {
+    cat << 'HELPEOF'
+This hook discovers Azure data disks and attempts to unlock them
+using the vTPM (via systemd-cryptsetup with tpm2-device=auto).
+
+Boot modes:
+  - Data disk with LUKS → vTPM unseal → passphrase fallback → mount as root
+  - Raw data disk       → boot squashfs, provision on first boot
+  - No data disk        → boot squashfs maintenance environment
+
+If vTPM unlock fails (e.g. first boot of a new VM before TPM enrollment),
+the hook prompts for a passphrase on the serial console (ttyS0).
+HELPEOF
+}

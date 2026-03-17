@@ -1,0 +1,24 @@
+[Unit]
+Description=Provision data disk with LUKS2 + vTPM encryption
+Documentation=https://github.com/mgugger/azure-archlinux-image
+ConditionPathExists=/run/arch-root/raw-data-disk
+ConditionPathExists=!/etc/arch-root-provisioned
+After=network-online.target systemd-resolved.service
+Wants=network-online.target
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/provision-data-disk.sh
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=1800
+
+# Security hardening for the provisioning service itself
+ProtectHome=yes
+NoNewPrivileges=no
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

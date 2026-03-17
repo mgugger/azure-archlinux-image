@@ -18,7 +18,7 @@
     enable_optional_cockpit: false
     enable_optional_observability: false
     enable_optional_rclone: false
-    enable_optional_auto_update: false
+    enable_optional_auto_update: true
     enable_minimal_image_cleanup: true
     enable_remove_build_toolchain: true
     enable_remove_linux_firmware: true

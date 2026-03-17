@@ -1,0 +1,16 @@
+{
+  "name": "Arch Linux Image Builder",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "privileged": true,
+  "remoteUser": "root",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "mads-hartmann.bash-ide-vscode",
+        "timonwong.shellcheck"
+      ]
+    }
+  }
+}

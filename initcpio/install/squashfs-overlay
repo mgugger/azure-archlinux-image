@@ -1,0 +1,23 @@
+#!/bin/bash
+# squashfs-overlay — mkinitcpio install hook
+
+build() {
+    add_module squashfs
+    add_module overlay
+    add_module loop
+
+    add_binary mount
+    add_binary umount
+    add_binary blkid
+    add_binary losetup
+
+    add_runscript
+}
+
+help() {
+    cat << 'HELPEOF'
+This hook sets up a squashfs + overlayfs root filesystem when no
+data disk root is available. The squashfs provides a read-only base,
+with a tmpfs overlay for runtime writes.
+HELPEOF
+}
