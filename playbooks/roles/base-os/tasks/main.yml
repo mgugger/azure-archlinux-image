@@ -1,6 +1,21 @@
 ---
+- name: Set NoExtract in live ISO pacman.conf before pacstrap
+  ansible.builtin.lineinfile:
+    path: /etc/pacman.conf
+    regexp: ^\#*NoExtract\s*=.*$
+    line: NoExtract = usr/share/doc/* usr/share/man/* usr/share/info/*
+
 - name: pacstrap base system with {{ kernel }} and apparmor
-  command: pacstrap /mnt base {{ kernel }} linux-firmware openssh base-devel apparmor btrfs-progs nano python sudo wireguard-tools audit systemd-ukify
+  command: pacstrap /mnt base {{ kernel }} openssh apparmor btrfs-progs sudo audit
+
+- name: Clear pacman cache in target right after pacstrap
+  command:
+    argv:
+      - /usr/bin/arch-chroot
+      - /mnt
+      - /usr/bin/pacman
+      - -Scc
+      - --noconfirm
 
 - name: Run genfstab
   shell: "genfstab -U /mnt > /mnt/etc/fstab"
@@ -94,6 +109,12 @@
     path: /mnt/etc/pacman.conf
     regexp: ^\#*LocalFileSigLevel\s*=.*$
     line: LocalFileSigLevel = Optional
+
+- name: Set NoExtract in target pacman.conf
+  ansible.builtin.lineinfile:
+    path: /mnt/etc/pacman.conf
+    regexp: ^\#*NoExtract\s*=.*$
+    line: NoExtract = usr/share/doc/* usr/share/man/* usr/share/info/*
 
 - name: Create resolved.conf.d directory
   ansible.builtin.file:
