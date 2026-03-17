@@ -43,14 +43,15 @@ Build directly on an Arch Linux host — no QEMU/Packer needed:
 ```bash
 # Install build dependencies
 pacman -S arch-install-scripts squashfs-tools dosfstools btrfs-progs \
-          qemu-img mkinitcpio systemd-ukify
+    qemu-img mkinitcpio systemd-ukify sbsigntools azure-cli
 
 # Build the VHD image
-sudo ./build.sh
+sudo KEY_VAULT_NAME=<your-key-vault-name> ./build.sh
 
 # Build and upload to Azure
 sudo AZURE_STORAGE_ACCOUNT=mystorageacct \
      AZURE_STORAGE_CONTAINER=vhds \
+  KEY_VAULT_NAME=<your-key-vault-name> \
      ./build.sh --upload
 ```
 
@@ -76,15 +77,26 @@ az deployment group create \
 
 ### Post-Deployment
 
-1. **Attach a data disk** (Premium SSD v2 recommended) to the VM
-2. **Reboot** — the first-boot service will automatically:
+1. **Set VM tag and Key Vault permissions** before first provisioning reboot:
+  - VM tag: `KeyVaultName=<your-key-vault-name>`
+  - Grant VM managed identity `secrets/get` on that Key Vault
+2. **Attach a data disk** (Premium SSD v2 recommended) to the VM
+3. **Reboot** — the first-boot service will automatically:
    - Encrypt the data disk with LUKS2 + vTPM
    - Install the full system
+  - Fetch Secure Boot private key from Key Vault into encrypted root
    - Reboot into the data disk root
-3. **Secure Boot** — after first successful boot, enable Secure Boot and run:
+4. **Secure Boot** — after first successful boot, enable Secure Boot and run:
    ```bash
    /usr/local/sbin/setup-secureboot.sh
    ```
+
+### Secure Boot Private Key Flow
+
+* Build time: key is generated, used for signing UKI/systemd-boot, uploaded to Key Vault, then shredded from the build workspace
+* Boot disk image: only the public certificate is included
+* Provisioning: private key is fetched via managed identity and stored on encrypted data disk only
+* Runtime updates: `/usr/local/bin/secure-boot-resign` uses local encrypted key and can recover it from Key Vault if missing
 
 ### Recovery / Maintenance
 
@@ -117,4 +129,4 @@ playbooks/                         # Ansible playbooks (optional, for customizat
 | Root filesystem | LUKS on OS disk | LUKS on data disk, squashfs fallback |
 | Recovery | Fallback initramfs with passphrase | Squashfs maintenance environment |
 | First boot | Manual data disk migration | Automatic provisioning |
-| External deps | GitHub binary download | None (all in systemd) |
+| External deps | GitHub binary download | Azure Key Vault (for Secure Boot private key storage) |

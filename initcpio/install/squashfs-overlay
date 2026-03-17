@@ -10,6 +10,9 @@ build() {
     add_binary umount
     add_binary blkid
     add_binary losetup
+    add_binary cryptsetup
+    add_binary systemd-cryptsetup
+    add_binary /usr/lib/systemd/systemd-cryptsetup
 
     add_runscript
 }

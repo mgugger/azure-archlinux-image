@@ -10,10 +10,13 @@ RUN pacman -Syu --noconfirm && \
         qemu-img \
         mkinitcpio \
         systemd-ukify \
+        sbsigntools \
+        python-pip \
         util-linux \
         git \
         sudo \
         nano && \
+    pip install --no-cache-dir azure-cli && \
     pacman -Scc --noconfirm
 
 # Codespaces runs as root in custom containers

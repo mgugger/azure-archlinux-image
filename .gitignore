@@ -1,2 +1,6 @@
 packer_output/*
 .vscode
+work
+work/**
+privkey.pem
+out/*

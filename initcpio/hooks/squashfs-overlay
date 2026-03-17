@@ -65,14 +65,34 @@ run_hook() {
         cp /run/arch-root/raw-data-disk /new_root/run/arch-root/raw-data-disk
     fi
 
-    # Bind-mount persistent log/cache from boot disk if subvolumes exist
-    if mount -o compress=zstd:6,noatime,nosuid,noexec,nodev,subvol=@log \
-         "${boot_root}" /new_root/var/log 2>/dev/null; then
-        msg "squashfs-overlay: Mounted persistent /var/log"
+    # Prefer TPM-unlocked encrypted storage for persistent log/cache on OS disk.
+    local var_img="/run/archboot/crypt/var-store.luks"
+    local var_loop=""
+    local var_mapper="arch_var"
+    local var_mnt="/run/archvar"
+    local var_ready=0
+
+    if [[ -f "${var_img}" ]]; then
+        var_loop=$(losetup --find --show "${var_img}" 2>/dev/null || true)
+        if [[ -n "${var_loop}" ]]; then
+            if systemd-cryptsetup attach "${var_mapper}" "${var_loop}" - tpm2-device=auto,tpm2-pcrs=7 2>/dev/null; then
+                mkdir -p "${var_mnt}"
+                if mount -o compress=zstd:6,noatime "/dev/mapper/${var_mapper}" "${var_mnt}" 2>/dev/null; then
+                    mkdir -p "${var_mnt}/log" "${var_mnt}/cache"
+                    mount --bind "${var_mnt}/log" /new_root/var/log
+                    mount --bind "${var_mnt}/cache" /new_root/var/cache
+                    var_ready=1
+                    msg "squashfs-overlay: Mounted TPM-encrypted persistent /var/log and /var/cache"
+                fi
+            fi
+        fi
     fi
-    if mount -o compress=zstd:6,noatime,nosuid,nodev,subvol=@cache \
-         "${boot_root}" /new_root/var/cache 2>/dev/null; then
-        msg "squashfs-overlay: Mounted persistent /var/cache"
+
+    # If encrypted container is unavailable, keep logs/cache ephemeral in RAM.
+    if [[ "${var_ready}" -eq 0 ]]; then
+        mount -t tmpfs -o mode=0755,nosuid,nodev,noexec tmpfs /new_root/var/log 2>/dev/null || true
+        mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /new_root/var/cache 2>/dev/null || true
+        msg "squashfs-overlay: Encrypted var store unavailable; using tmpfs for /var/log and /var/cache"
     fi
 
     msg "squashfs-overlay: Root overlay ready (mode: ${ARCH_BOOT_MODE})"
