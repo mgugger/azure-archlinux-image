@@ -11,7 +11,7 @@ set -euo pipefail
 
 ### Configuration ###
 IMAGE_SIZE="2G"
-IMAGE_NAME="azure-archlinux"
+IMAGE_NAME="archlinux"
 WORK_DIR="$(pwd)/work"
 OUT_DIR="$(pwd)/out"
 SQUASHFS_PACKAGES="packages.conf"
@@ -24,6 +24,18 @@ SECURE_BOOT_CERTIFICATE_SECRET_NAME="${SECURE_BOOT_CERTIFICATE_SECRET_NAME:-secu
 
 SECURE_BOOT_PRIVATE_KEY_PATH="${WORK_DIR}/secure-boot-private-key.pem"
 SECURE_BOOT_CERTIFICATE_PATH="${WORK_DIR}/secure-boot-certificate.pem"
+
+# Set USE_SHIM=0 to skip shim and boot the signed UKI or systemd-boot directly.
+# Default is on: shim provides MOK-based Secure Boot trust, and with CHAINLOAD_UKI=1
+# it chainloads the UKI directly — no systemd-boot NVRAM overhead.
+USE_SHIM="${USE_SHIM:-1}"
+
+# Set CHAINLOAD_UKI=0 to keep systemd-boot in the shim chain (shim -> sd-boot -> UKI).
+# Default is on: shim chainloads the UKI directly as grubx64.efi, bypassing
+# systemd-boot entirely. This eliminates the Loader* NVRAM variables that
+# systemd-boot writes on every boot — important on Azure Hyper-V where UEFI
+# NVRAM is limited to ~32 KB.
+CHAINLOAD_UKI="${CHAINLOAD_UKI:-1}"
 
 # Source package lists
 source "${SQUASHFS_PACKAGES}"
@@ -88,20 +100,46 @@ attach_loop_device() {
 attach_partition_loop_devices() {
     local image_path="$1"
     local attempt=1
-    local esp_offset=$((2048 * 512))
-    local esp_size=$((512 * 1024 * 1024))
-    local root_offset=$((1050624 * 512))
+
+    # Read the actual partition geometry back from the GPT that sfdisk wrote.
+    # We MUST set --sizelimit on the root partition's loop device; without it
+    # the loop device extends to EOF (including the backup GPT), causing
+    # mkfs.btrfs to record a device size larger than the real partition —
+    # which makes BTRFS refuse to mount at boot.
+    #
+    # We use sfdisk -J (JSON) + python to parse reliably.
+    local part_json
+    part_json=$(sfdisk -J "${image_path}")
+
+    local esp_start esp_size root_start root_size
+    read -r esp_start esp_size root_start root_size < <(
+        python3 -c "
+import json, sys
+pt = json.loads(sys.stdin.read())['partitiontable']['partitions']
+esp = next(p for p in pt if 'C12A7328' in p['type'].upper())
+root = next(p for p in pt if '0FC63DAF' in p['type'].upper())
+print(esp['start']*512, esp['size']*512, root['start']*512, root['size']*512)
+" <<< "${part_json}"
+    )
+
+    if (( root_size <= 0 )); then
+        echo "Error: sfdisk reports root partition size ${root_size} — aborting" >&2
+        return 1
+    fi
+
+    echo ":: Partition geometry (from GPT) — ESP: offset=${esp_start} size=${esp_size}  Root: offset=${root_start} size=${root_size}"
 
     ensure_loop_nodes
 
     while (( attempt <= 3 )); do
         ESP_LOOP_DEV=$(losetup --find --show \
-            --offset "${esp_offset}" \
+            --offset "${esp_start}" \
             --sizelimit "${esp_size}" \
             "${image_path}" 2>/dev/null || true)
 
         ROOT_LOOP_DEV=$(losetup --find --show \
-            --offset "${root_offset}" \
+            --offset "${root_start}" \
+            --sizelimit "${root_size}" \
             "${image_path}" 2>/dev/null || true)
 
         if [[ -n "${ESP_LOOP_DEV}" && -n "${ROOT_LOOP_DEV}" ]]; then
@@ -174,6 +212,16 @@ fi
 # Configure the minimal root
 cat > "${WORK_DIR}/squashfs-root/etc/hostname" <<< "archlinux-recovery"
 cat > "${WORK_DIR}/squashfs-root/etc/locale.conf" <<< "LANG=en_US.UTF-8"
+
+# Ensure pacman.conf and mirrorlist are present (pacstrap -G -M skips them)
+if [[ ! -f "${WORK_DIR}/squashfs-root/etc/pacman.conf" ]]; then
+    cp /etc/pacman.conf "${WORK_DIR}/squashfs-root/etc/pacman.conf"
+fi
+if [[ ! -s "${WORK_DIR}/squashfs-root/etc/pacman.d/mirrorlist" ]]; then
+    mkdir -p "${WORK_DIR}/squashfs-root/etc/pacman.d"
+    cp /etc/pacman.d/mirrorlist "${WORK_DIR}/squashfs-root/etc/pacman.d/mirrorlist" 2>/dev/null || \
+        echo 'Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch' > "${WORK_DIR}/squashfs-root/etc/pacman.d/mirrorlist"
+fi
 cat > "${WORK_DIR}/squashfs-root/etc/systemd/zram-generator.conf" << 'EOF'
 [zram0]
 # Keep bootstrap resilient on low-memory VM sizes.
@@ -189,6 +237,7 @@ arch-chroot "${WORK_DIR}/squashfs-root" bash -c '
     locale-gen
     systemctl enable systemd-networkd
     systemctl enable systemd-resolved
+    systemctl mask systemd-boot-update.service
     if ! ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf; then
         echo "WARNING: could not update /etc/resolv.conf in squashfs root; keeping existing file." >&2
     fi
@@ -203,12 +252,6 @@ Name=en* eth*
 DHCP=yes
 DNS=168.63.129.16
 EOF
-
-# Install the first-boot provisioning scripts into squashfs
-install -Dm755 initcpio/hooks/arch-root-discover \
-    "${WORK_DIR}/squashfs-root/usr/lib/initcpio/hooks/arch-root-discover" 2>/dev/null || true
-install -Dm644 initcpio/install/arch-root-discover \
-    "${WORK_DIR}/squashfs-root/usr/lib/initcpio/install/arch-root-discover" 2>/dev/null || true
 
 # Install first-boot service and script
 install -Dm755 first-boot/provision-data-disk.sh \
@@ -244,7 +287,7 @@ fetch_keyvault_name() {
     fi
 
     local compute_json
-    compute_json="$(curl -fsS -H Metadata:true \
+    compute_json="\$(curl -fsS -H Metadata:true \
         "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01")" || return 1
 
     python -c 'import json,sys; tags=json.loads(sys.stdin.read()).get("tags","");
@@ -263,13 +306,13 @@ ensure_private_key() {
     fi
 
     local kv_name token
-    kv_name="$(fetch_keyvault_name || true)"
+    kv_name="\$(fetch_keyvault_name || true)"
     if [[ -z "\${kv_name}" ]]; then
         log "Key is missing and KeyVaultName is not available from /etc/arch-keyvault.conf or VM tags."
         return 1
     fi
 
-    token="$(curl -fsS -H Metadata:true \
+    token="\$(curl -fsS -H Metadata:true \
         "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://vault.azure.net" \
         | python -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
 
@@ -284,25 +327,43 @@ ensure_private_key() {
 
 ensure_private_key
 
-/usr/bin/bootctl update \
-    --certificate "\${CERT_PATH}" \
-    --private-key "\${KEY_PATH}" \
-    --no-pager || true
+# Detect chainload mode: shim -> UKI directly (no systemd-boot in the chain)
+if [[ -f /efi/EFI/BOOT/chainload-uki.marker ]]; then
+    # Chainload mode: rebuild UKI and place it as grubx64.efi for shim
+    log "Chainload-UKI mode: rebuilding UKI as grubx64.efi..."
+    mkinitcpio -P
+    if [[ -f /efi/EFI/Linux/arch-linux.efi ]]; then
+        sbsign --key "\${KEY_PATH}" --cert "\${CERT_PATH}" \
+            --output /efi/EFI/BOOT/grubx64.efi \
+            /efi/EFI/Linux/arch-linux.efi
+        log "Signed UKI installed as grubx64.efi."
+    fi
+else
+    # Standard mode: update systemd-boot, optionally swap shim
+    /usr/bin/bootctl update \
+        --certificate "\${CERT_PATH}" \
+        --private-key "\${KEY_PATH}" \
+        --no-pager || true
 
-if [[ -f /efi/EFI/BOOT/BOOTX64.EFI ]]; then
-    cp /efi/EFI/BOOT/BOOTX64.EFI /efi/EFI/BOOT/grubx64.efi
+    if [[ -f /efi/EFI/BOOT/grubx64.efi ]] && [[ -f /usr/share/shim-signed/shimx64.efi ]]; then
+        cp /efi/EFI/BOOT/BOOTX64.EFI /efi/EFI/BOOT/grubx64.efi
+        cp /usr/share/shim-signed/shimx64.efi /efi/EFI/BOOT/BOOTX64.EFI
+        cp /usr/share/shim-signed/mmx64.efi /efi/EFI/BOOT/mmx64.efi
+        log "Shim chain updated."
+    else
+        log "Direct systemd-boot (no shim)."
+    fi
 fi
 EOF
 chmod 0755 "${WORK_DIR}/squashfs-root/usr/local/bin/secure-boot-resign"
 
 install -d -m755 "${WORK_DIR}/squashfs-root/etc/pacman.d/hooks"
-cat > "${WORK_DIR}/squashfs-root/etc/pacman.d/hooks/90-secure-boot-resign.hook" << 'EOF'
+cat > "${WORK_DIR}/squashfs-root/etc/pacman.d/hooks/90-secure-boot-resign.hook" << EOF
 [Trigger]
 Operation = Install
 Operation = Upgrade
 Type = Package
-Target = systemd
-Target = systemd-boot
+$(if [[ "${CHAINLOAD_UKI}" -ne 1 ]]; then echo "Target = systemd"; echo "Target = systemd-boot"; fi)
 Target = linux-hardened
 
 [Action]
@@ -310,6 +371,84 @@ Description = Re-sign Secure Boot artifacts after updates
 When = PostTransaction
 Exec = /usr/local/bin/secure-boot-resign
 EOF
+
+# Build and install shim-signed from AUR (needed for Secure Boot chain)
+if [[ "${USE_SHIM}" -eq 1 ]]; then
+echo ":: Building shim-signed from AUR..."
+arch-chroot "${WORK_DIR}/squashfs-root" bash -c '
+    # Create temporary build user (makepkg cannot run as root)
+    useradd -m _builduser
+    echo "_builduser ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+    # Initialise pacman keyring
+    pacman-key --init
+    pacman-key --populate archlinux
+
+    # Install build dependencies
+    pacman -Sy --noconfirm --needed base-devel git
+
+    # Build shim-signed
+    cd /tmp
+    sudo -u _builduser bash -c "
+        git clone https://aur.archlinux.org/shim-signed.git /tmp/shim-signed
+        cd /tmp/shim-signed
+        makepkg -s --noconfirm
+    "
+    pacman -U --noconfirm /tmp/shim-signed/shim-signed-*.pkg.tar.*
+
+    # Clean up build user and artefacts
+    rm -rf /tmp/shim-signed
+    userdel -r _builduser 2>/dev/null || true
+    sed -i "/_builduser/d" /etc/sudoers
+
+    # Remove build-only packages (base-devel, git and their unique deps)
+    pacman -Rns --noconfirm base-devel git 2>/dev/null || true
+'
+echo ":: shim-signed installed."
+else
+    echo ":: Skipping shim-signed build (USE_SHIM=0)."
+fi
+
+# Trim squashfs-root before compression
+echo ":: Trimming squashfs-root..."
+SQROOT="${WORK_DIR}/squashfs-root"
+
+# Pacman package cache (biggest win)
+rm -rf "${SQROOT}/var/cache/pacman/pkg/"*
+
+# Pacman sync databases (will be refreshed on provision)
+rm -rf "${SQROOT}/var/lib/pacman/sync/"*
+
+# Man pages, info pages, doc
+rm -rf "${SQROOT}/usr/share/man" \
+       "${SQROOT}/usr/share/info" \
+       "${SQROOT}/usr/share/doc" \
+       "${SQROOT}/usr/share/gtk-doc"
+
+# Locale data except en_US
+find "${SQROOT}/usr/share/locale" -mindepth 1 -maxdepth 1 \
+    ! -name 'en_US' ! -name 'locale.alias' -exec rm -rf {} + 2>/dev/null || true
+
+# i18n not needed
+rm -rf "${SQROOT}/usr/share/i18n/locales" 2>/dev/null || true
+
+# Python bytecode caches
+find "${SQROOT}" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
+find "${SQROOT}" -name '*.pyc' -delete 2>/dev/null || true
+
+# Static libraries (not needed at runtime)
+find "${SQROOT}/usr/lib" -name '*.a' -delete 2>/dev/null || true
+
+# Leftover log files from chroot operations
+rm -rf "${SQROOT}/var/log/"* 2>/dev/null || true
+
+# GnuPG socket leftovers from pacman-key
+rm -rf "${SQROOT}/etc/pacman.d/gnupg/S."* 2>/dev/null || true
+
+# /tmp cruft
+rm -rf "${SQROOT}/tmp/"* 2>/dev/null || true
+
+echo ":: Trimmed size: $(du -sh "${SQROOT}" | cut -f1)"
 
 # Compress into squashfs
 echo ":: Compressing squashfs image..."
@@ -326,12 +465,24 @@ echo ":: Phase 2 — Building VHD image..."
 # Create raw disk image
 truncate -s "${IMAGE_SIZE}" "${WORK_DIR}/${IMAGE_NAME}.raw"
 
-# Partition: 512MB ESP + rest for root
+# Partition: 256MB ESP + rest for root
 sfdisk "${WORK_DIR}/${IMAGE_NAME}.raw" << 'EOF'
 label: gpt
-size=512M, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name="EFI System"
+size=256M, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name="EFI System"
 type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="Arch Root"
 EOF
+
+# Read back the exact root partition size (in sectors) that sfdisk wrote.
+# This accounts for GPT backup and MiB alignment automatically.
+ROOT_PART_SECTORS=$(sfdisk -d "${WORK_DIR}/${IMAGE_NAME}.raw" \
+    | grep '0FC63DAF' | sed -n 's/.*size= *\([0-9][0-9]*\).*/\1/p')
+ROOT_PART_BYTES=$(( ROOT_PART_SECTORS * 512 ))
+echo ":: Root partition: ${ROOT_PART_SECTORS} sectors = ${ROOT_PART_BYTES} bytes"
+
+if [[ -z "${ROOT_PART_SECTORS}" ]] || (( ROOT_PART_BYTES <= 0 )); then
+    echo "Error: could not determine root partition size from sfdisk" >&2
+    exit 1
+fi
 
 # Setup loop devices for partitions via explicit offsets.
 # This avoids relying on /dev/loopXp1 nodes, which may not appear in some containers.
@@ -339,9 +490,13 @@ attach_partition_loop_devices "${WORK_DIR}/${IMAGE_NAME}.raw"
 ESP_PART="${ESP_LOOP_DEV}"
 ROOT_PART="${ROOT_LOOP_DEV}"
 
-# Format partitions
+# Format partitions — pass -b to mkfs.btrfs so the filesystem's recorded
+# total_bytes matches the real partition size.  Without this, the loop
+# device (which may lack proper --sizelimit in container environments)
+# exposes extra bytes from the backup GPT, and BTRFS will refuse to mount
+# at boot when the kernel sees the smaller real partition.
 mkfs.vfat -F 32 -n "ESP" "${ESP_PART}"
-mkfs.btrfs -f -L "archboot" "${ROOT_PART}"
+mkfs.btrfs -f -L "archboot" -b "${ROOT_PART_BYTES}" "${ROOT_PART}"
 
 # Mount
 mount "${ROOT_PART}" "${WORK_DIR}/mnt"
@@ -368,14 +523,14 @@ cp -a "${WORK_DIR}/squashfs-root/lib/modules/${KVER}" \
     "${WORK_DIR}/mnt/lib/modules/${KVER}" 2>/dev/null || true
 
 # Install our custom mkinitcpio hooks into the squashfs-root for building
-install -Dm644 initcpio/install/arch-root-discover \
-    "${WORK_DIR}/squashfs-root/usr/lib/initcpio/install/arch-root-discover"
-install -Dm755 initcpio/hooks/arch-root-discover \
-    "${WORK_DIR}/squashfs-root/usr/lib/initcpio/hooks/arch-root-discover"
 install -Dm644 initcpio/install/squashfs-overlay \
     "${WORK_DIR}/squashfs-root/usr/lib/initcpio/install/squashfs-overlay"
-install -Dm755 initcpio/hooks/squashfs-overlay \
-    "${WORK_DIR}/squashfs-root/usr/lib/initcpio/hooks/squashfs-overlay"
+
+# Install systemd initrd service and setup script (used instead of run_hook)
+install -Dm644 initcpio/systemd/arch-root-setup.service \
+    "${WORK_DIR}/squashfs-root/usr/lib/systemd/system/arch-root-setup.service"
+install -Dm755 initcpio/systemd/setup-root \
+    "${WORK_DIR}/squashfs-root/usr/lib/arch-root/setup-root"
 
 # Some systemd hook versions expect this path under /usr/lib/systemd.
 # Ensure it exists in the chroot when only /usr/bin contains the binary.
@@ -389,8 +544,7 @@ fi
 # Create mkinitcpio preset for the boot image
 cat > "${WORK_DIR}/squashfs-root/etc/mkinitcpio.conf.d/azure-boot.conf" << 'MKINITCONF'
 MODULES=(hv_vmbus hv_storvsc hv_netvsc hv_utils squashfs overlay loop)
-BINARIES=(btrfs cryptsetup tpm2_unseal /usr/bin/bash)
-HOOKS=(systemd modconf kms block arch-root-discover squashfs-overlay filesystems)
+HOOKS=(systemd modconf kms block sd-encrypt squashfs-overlay filesystems)
 COMPRESSION="zstd"
 MKINITCONF
 
@@ -452,27 +606,55 @@ sbsign \
     --output "${WORK_DIR}/mnt/efi/EFI/Linux/arch-linux.efi" \
     "${WORK_DIR}/mnt/efi/EFI/Linux/arch-linux.efi"
 
-# systemd-boot loader config
-mkdir -p "${WORK_DIR}/mnt/efi/loader"
-cat > "${WORK_DIR}/mnt/efi/loader/loader.conf" << 'EOF'
+mkdir -p "${WORK_DIR}/mnt/efi/EFI/BOOT"
+
+if [[ "${USE_SHIM}" -eq 1 ]] && [[ "${CHAINLOAD_UKI}" -eq 1 ]] && \
+   [[ -f "${WORK_DIR}/squashfs-root/usr/share/shim-signed/shimx64.efi" ]]; then
+    # Chainload mode: shim (BOOTX64.EFI) -> signed UKI (grubx64.efi), no systemd-boot
+    cp "${WORK_DIR}/squashfs-root/usr/share/shim-signed/shimx64.efi" \
+        "${WORK_DIR}/mnt/efi/EFI/BOOT/BOOTX64.EFI"
+    cp "${WORK_DIR}/squashfs-root/usr/share/shim-signed/mmx64.efi" \
+        "${WORK_DIR}/mnt/efi/EFI/BOOT/mmx64.efi"
+    cp "${WORK_DIR}/mnt/efi/EFI/Linux/arch-linux.efi" \
+        "${WORK_DIR}/mnt/efi/EFI/BOOT/grubx64.efi"
+    # Marker so the resign script knows to update grubx64.efi instead of bootctl
+    touch "${WORK_DIR}/mnt/efi/EFI/BOOT/chainload-uki.marker"
+    echo ":: Shim chainload-UKI: BOOTX64.EFI (shim) -> grubx64.efi (signed UKI)"
+else
+    # systemd-boot loader config (only needed when sd-boot is in the chain)
+    mkdir -p "${WORK_DIR}/mnt/efi/loader"
+    cat > "${WORK_DIR}/mnt/efi/loader/loader.conf" << 'EOF'
 default arch-linux.efi
 timeout 5
 console-mode max
 editor no
 EOF
 
-# Install systemd-boot
-mkdir -p "${WORK_DIR}/mnt/efi/EFI/BOOT"
-sbsign \
-    --key "${SECURE_BOOT_PRIVATE_KEY_PATH}" \
-    --cert "${SECURE_BOOT_CERTIFICATE_PATH}" \
-    --output "${WORK_DIR}/mnt/efi/EFI/BOOT/BOOTX64.EFI" \
-    "${WORK_DIR}/squashfs-root/usr/lib/systemd/boot/efi/systemd-bootx64.efi"
-cp "${WORK_DIR}/mnt/efi/EFI/BOOT/BOOTX64.EFI" "${WORK_DIR}/mnt/efi/EFI/BOOT/grubx64.efi"
+    # Install systemd-boot as the default bootloader (BOOTX64.EFI)
+    sbsign \
+        --key "${SECURE_BOOT_PRIVATE_KEY_PATH}" \
+        --cert "${SECURE_BOOT_CERTIFICATE_PATH}" \
+        --output "${WORK_DIR}/mnt/efi/EFI/BOOT/BOOTX64.EFI" \
+        "${WORK_DIR}/squashfs-root/usr/lib/systemd/boot/efi/systemd-bootx64.efi"
 
-# Store only public certificate on the boot disk (no private key in image).
-mkdir -p "${WORK_DIR}/mnt/etc/kernel"
-cp "${SECURE_BOOT_CERTIFICATE_PATH}" "${WORK_DIR}/mnt/etc/kernel/secure-boot-certificate.pem"
+    if [[ "${USE_SHIM}" -eq 1 ]] && [[ -f "${WORK_DIR}/squashfs-root/usr/share/shim-signed/shimx64.efi" ]]; then
+        # Shim + systemd-boot mode
+        mv "${WORK_DIR}/mnt/efi/EFI/BOOT/BOOTX64.EFI" \
+            "${WORK_DIR}/mnt/efi/EFI/BOOT/grubx64.efi"
+        cp "${WORK_DIR}/squashfs-root/usr/share/shim-signed/shimx64.efi" \
+            "${WORK_DIR}/mnt/efi/EFI/BOOT/BOOTX64.EFI"
+        cp "${WORK_DIR}/squashfs-root/usr/share/shim-signed/mmx64.efi" \
+            "${WORK_DIR}/mnt/efi/EFI/BOOT/mmx64.efi"
+        echo ":: Shim chain: BOOTX64.EFI (shim) -> grubx64.efi (signed systemd-boot)"
+    else
+        echo ":: Direct boot: BOOTX64.EFI (signed systemd-boot), no shim."
+    fi
+fi
+
+# Public certificate on ESP (PEM + DER for MOK enrollment / Secure Boot).
+# Only the private key is kept exclusively in Key Vault.
+mkdir -p "${WORK_DIR}/mnt/efi/keys"
+cp "${SECURE_BOOT_CERTIFICATE_PATH}" "${WORK_DIR}/mnt/efi/keys/secure-boot-certificate.pem"
 openssl x509 -in "${SECURE_BOOT_CERTIFICATE_PATH}" -outform DER \
     -out "${WORK_DIR}/mnt/efi/mok-manager.crt"
 

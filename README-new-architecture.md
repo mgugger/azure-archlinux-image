@@ -2,7 +2,7 @@
 
 A hardened Arch Linux image for Azure Trusted Launch VMs with:
 * **Squashfs fallback root** — minimal boot image, no Packer required
-* **vTPM disk encryption** — LUKS2 sealed to vTPM (PCR 7+11), replaces luks_unlocker
+* **vTPM disk encryption** — LUKS2 sealed to vTPM (PCR 11), replaces luks_unlocker
 * **Auto-provisioning** — raw data disk is encrypted and installed on first boot
 * systemd-boot + UKI + Secure Boot
 * BTRFS with subvolumes + zstd compression
@@ -29,7 +29,7 @@ Boot VHD (~1.5GB)                     Data Disk (attached in Azure)
 1. **UKI boots** → initramfs runs `arch-root-discover` hook
 2. **Data disk with LUKS found** → vTPM unseals key → mount BTRFS subvols → boot into data disk root
 3. **Raw/unformatted data disk found** → boot into squashfs + overlayfs → `provision-data-disk.service` runs:
-   - LUKS2 format + `systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=7+11`
+   - LUKS2 format + `systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=11`
    - BTRFS with subvolumes
    - System install from squashfs + `pacman -Syu`
    - Regenerate UKI for data-disk root

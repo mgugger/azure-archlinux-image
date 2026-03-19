@@ -4,3 +4,6 @@ work
 work/**
 privkey.pem
 out/*
+*.pem
+*.vhd
+*.raw

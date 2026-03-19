@@ -1,26 +1,74 @@
 #!/bin/bash
 # squashfs-overlay — mkinitcpio install hook
+# Adds modules, binaries, crypttab, and the systemd service needed for
+# data-disk discovery and squashfs overlay root.
+# LUKS unlock is handled by sd-encrypt + crypttab (standard systemd flow).
 
 build() {
+    # Kernel modules: Azure drivers + squashfs/overlay
+    # (dm-crypt, tpm_crb, tpm_tis are added by the sd-encrypt hook)
+    add_module hv_vmbus
+    add_module hv_storvsc
+    add_module hv_netvsc
+    add_module hv_utils
     add_module squashfs
     add_module overlay
     add_module loop
+    add_module tpm_crb
+    add_module tpm_tis
 
+    # Binaries for disk discovery, BTRFS, squashfs overlay
+    add_binary /usr/bin/bash
+    add_binary cryptsetup
+    add_binary btrfs
+    add_binary blkid
+    add_binary udevadm
+    add_binary readlink
+    add_binary losetup
     add_binary mount
     add_binary umount
-    add_binary blkid
-    add_binary losetup
-    add_binary cryptsetup
-    add_binary systemd-cryptsetup
-    add_binary /usr/lib/systemd/systemd-cryptsetup
+    add_binary mkdir
+    add_binary cat
+    add_binary sed
+    add_binary cp
+    add_binary chmod
+    add_binary echo
+    add_binary sleep
+    add_binary ln
+    add_binary printf
 
-    add_runscript
+    # TPM2 libraries (safety net — sd-encrypt may not pull all of these)
+    for lib in /usr/lib/libtss2*.so*; do
+        [[ -f "$lib" ]] && add_file "$lib"
+    done
+    for lib in /usr/lib/libtss2-tcti-device.so*; do
+        [[ -f "$lib" ]] && add_file "$lib"
+    done
+
+    # Crypttab for the LUKS data disk — processed by systemd-cryptsetup-generator.
+    # Uses LABEL so it works regardless of device enumeration order.
+    # nofail: don't block boot if the device doesn't exist (first boot / no data disk).
+    # x-initrd.attach: process in initrd.
+    # x-systemd.device-timeout=10: give up after 10s if LUKS device absent.
+    mkdir -p "$BUILDROOT/etc"
+    echo 'arch_root  LABEL=arch_root_luks  -  tpm2-device=auto,tpm2-pcrs=11,nofail,x-initrd.attach,x-systemd.device-timeout=10' \
+        > "$BUILDROOT/etc/crypttab"
+
+    # systemd initrd: add the service unit and setup script
+    add_systemd_unit arch-root-setup.service
+    add_file /usr/lib/arch-root/setup-root
+
+    # Enable: make initrd-root-fs.target pull in arch-root-setup.service
+    mkdir -p "$BUILDROOT/usr/lib/systemd/system/initrd-root-fs.target.requires"
+    ln -sf ../arch-root-setup.service \
+        "$BUILDROOT/usr/lib/systemd/system/initrd-root-fs.target.requires/arch-root-setup.service"
 }
 
 help() {
     cat << 'HELPEOF'
-This hook sets up a squashfs + overlayfs root filesystem when no
-data disk root is available. The squashfs provides a read-only base,
-with a tmpfs overlay for runtime writes.
+This hook sets up root via a systemd initrd service (setup-root):
+  - Data disk with LUKS: unlocked by systemd-cryptsetup (TPM2 → passphrase fallback)
+  - Raw data disk: boot squashfs, provision on first boot
+  - No data disk: boot squashfs maintenance environment
 HELPEOF
 }

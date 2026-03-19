@@ -1,0 +1,231 @@
+#!/bin/bash
+# setup-root — systemd initrd service script
+# Runs after sysroot.mount and cryptsetup.target.
+# LUKS unlock is handled by systemd-cryptsetup via /etc/crypttab (sd-encrypt hook).
+# This script mounts the unlocked data-disk BTRFS or sets up a squashfs overlay.
+
+set -uo pipefail
+# NOTE: do NOT use set -e; we handle errors explicitly and must always
+# fall through to squashfs overlay if data-disk mount fails.
+
+log() { echo "[arch-root-setup] $*"; }
+
+########################################################################
+# Phase 1: Data-disk BTRFS (LUKS already opened by systemd-cryptsetup)
+########################################################################
+if [[ -b /dev/mapper/arch_root ]]; then
+    log "LUKS volume /dev/mapper/arch_root is open. Mounting data-disk BTRFS..."
+    if mount -o compress=zstd:6,noatime,subvol=@ /dev/mapper/arch_root /sysroot; then
+        mkdir -p /sysroot/{home,root,srv,var/log,var/cache,var/tmp}
+        mount -o compress=zstd:6,noatime,nosuid,nodev,subvol=@home \
+            /dev/mapper/arch_root /sysroot/home 2>/dev/null || true
+        mount -o compress=zstd:6,noatime,subvol=@root \
+            /dev/mapper/arch_root /sysroot/root 2>/dev/null || true
+        mount -o compress=zstd:6,noatime,subvol=@srv \
+            /dev/mapper/arch_root /sysroot/srv 2>/dev/null || true
+        mount -o compress=zstd:6,noatime,nosuid,noexec,nodev,subvol=@log \
+            /dev/mapper/arch_root /sysroot/var/log 2>/dev/null || true
+        mount -o compress=zstd:6,noatime,nosuid,nodev,subvol=@cache \
+            /dev/mapper/arch_root /sysroot/var/cache 2>/dev/null || true
+        mount -o compress=zstd:6,noatime,nosuid,noexec,nodev,subvol=@vartmp \
+            /dev/mapper/arch_root /sysroot/var/tmp 2>/dev/null || true
+
+        mkdir -p /run/arch-root
+        echo "data-disk" > /run/arch-root/boot-mode
+        log "Data disk root mounted successfully."
+        exit 0
+    else
+        log "Data disk BTRFS mount failed. Falling back to squashfs."
+        cryptsetup close arch_root 2>/dev/null || true
+    fi
+fi
+
+########################################################################
+# Phase 2: Discover raw data disks for squashfs mode selection
+########################################################################
+data_disk=""
+
+log "No open LUKS volume. Scanning for raw data disks..."
+udevadm settle --timeout=10 2>/dev/null || sleep 3
+
+# Check whether a whole-disk device contains the archboot partition.
+disk_is_os() {
+    local disk="$1" part
+    if [[ "$(blkid -s LABEL -o value "${disk}" 2>/dev/null)" == "archboot" ]]; then
+        return 0
+    fi
+    for part in "${disk}"{1,2,3,4} "${disk}p"{1,2,3,4}; do
+        [[ -b "$part" ]] || continue
+        if [[ "$(blkid -s LABEL -o value "${part}" 2>/dev/null)" == "archboot" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Azure data disks: /dev/disk/azure/scsi1/lun*
+if [[ -d /dev/disk/azure/scsi1 ]]; then
+    for lun in /dev/disk/azure/scsi1/lun*; do
+        [[ -b "$lun" ]] || continue
+        data_disk=$(readlink -f "$lun")
+        break
+    done
+fi
+
+# Fallback: scan all SCSI/virtio disks, skipping the OS disk
+if [[ -z "$data_disk" ]]; then
+    for dev in /dev/sd{a,b,c,d,e} /dev/vd{a,b,c,d,e}; do
+        [[ -b "$dev" ]] || continue
+        disk_is_os "$dev" && continue
+        data_disk="$dev"
+        break
+    done
+fi
+
+# NVMe data disks
+if [[ -z "$data_disk" ]]; then
+    for dev in /dev/nvme{0,1,2,3}n1; do
+        [[ -b "$dev" ]] || continue
+        disk_is_os "$dev" && continue
+        data_disk="$dev"
+        break
+    done
+fi
+
+########################################################################
+# Phase 3: Squashfs overlay setup
+########################################################################
+boot_mode="squashfs"
+if [[ -n "$data_disk" ]]; then
+    log "Found data disk: ${data_disk}"
+    # Check if it's LUKS (exists but unlock failed → recovery mode)
+    luks_found=0
+    for suffix in "" "p1" "1"; do
+        if cryptsetup isLuks "${data_disk}${suffix}" 2>/dev/null; then
+            luks_found=1
+            break
+        fi
+    done
+    if [[ "$luks_found" -eq 1 ]]; then
+        log "LUKS data disk found but not unlocked. Booting recovery console."
+    else
+        boot_mode="squashfs-provision"
+        mkdir -p /run/arch-root
+        echo "${data_disk}" > /run/arch-root/raw-data-disk
+        log "Raw data disk detected: ${data_disk}"
+    fi
+else
+    log "No data disk found."
+fi
+
+# Write boot-mode early to initrd /run (survives MS_MOVE to real root)
+mkdir -p /run/arch-root
+echo "${boot_mode}" > /run/arch-root/boot-mode
+
+log "Setting up squashfs overlay (mode: ${boot_mode})..."
+
+# Keep BTRFS accessible at /run/archboot after we overmount /sysroot.
+# The bind mount references the filesystem independently of the mount point,
+# so it stays valid even after overlay is mounted on top of /sysroot.
+mkdir -p /run/archboot
+mount --bind /sysroot /run/archboot
+
+# Mount squashfs via loop device
+loop_dev=$(losetup --find --show /run/archboot/sfs/airootfs.sfs)
+mkdir -p /run/archiso/sfs
+mount -o ro -t squashfs "${loop_dev}" /run/archiso/sfs
+log "Squashfs mounted via ${loop_dev}"
+
+# Overlay writable layer: persistent on BTRFS when no data disk, tmpfs otherwise
+if [[ "$boot_mode" == "squashfs" ]]; then
+    # No data disk — use BTRFS for persistent overlay writes
+    mount -o remount,rw /run/archboot
+    mkdir -p /run/archboot/overlay/{upper,work}
+    overlay_upper="/run/archboot/overlay/upper"
+    overlay_work="/run/archboot/overlay/work"
+    log "Using persistent BTRFS overlay on boot partition"
+else
+    # Data disk pending provisioning — ephemeral tmpfs overlay
+    mkdir -p /run/archiso/cowspace
+    mount -t tmpfs -o size=75% cowspace /run/archiso/cowspace
+    mkdir -p /run/archiso/cowspace/{upper,work}
+    overlay_upper="/run/archiso/cowspace/upper"
+    overlay_work="/run/archiso/cowspace/work"
+    log "Using ephemeral tmpfs overlay (provisioning pending)"
+fi
+
+########################################################################
+# Recovery console: serial-console-only autologin (no network access)
+########################################################################
+log "Injecting serial-console autologin into overlay upper (mode: ${boot_mode})"
+
+    # Autologin root on serial console (ttyS0 = Azure Serial Console / KVM stdio)
+    # Azure Serial Console access is governed by Azure RBAC — no network exposure.
+    mkdir -p "${overlay_upper}/etc/systemd/system/serial-getty@ttyS0.service.d"
+    cat > "${overlay_upper}/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf" <<'EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud 115200,57600,38400,9600 %I $TERM
+EOF
+
+    # Also autologin on tty1 for VGA/KVM console
+    mkdir -p "${overlay_upper}/etc/systemd/system/getty@tty1.service.d"
+    cat > "${overlay_upper}/etc/systemd/system/getty@tty1.service.d/autologin.conf" <<'EOF'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear %I $TERM
+EOF
+
+    # Explicitly disable sshd in recovery — serial console only.
+    # This prevents network-accessible root shell in the squashfs fallback.
+    mkdir -p "${overlay_upper}/etc/systemd/system"
+    ln -sf /dev/null "${overlay_upper}/etc/systemd/system/sshd.service"
+
+    log "Recovery: serial-console autologin only (sshd masked)"
+
+# Overmount /sysroot with the overlay
+mount -t overlay overlay \
+    -o lowerdir=/run/archiso/sfs,upperdir="${overlay_upper}",workdir="${overlay_work}" \
+    /sysroot
+log "Overlay mounted at /sysroot"
+
+# Persist boot state into /etc (inside the overlay) so it survives switch-root.
+# /run is a tmpfs that systemd re-mounts fresh after switch-root, so anything
+# written there is lost. /etc lives in the overlay upper dir and persists.
+mkdir -p /sysroot/etc/arch-root
+echo "${boot_mode}" > /sysroot/etc/arch-root/boot-mode
+if [[ -f /run/arch-root/raw-data-disk ]]; then
+    cp /run/arch-root/raw-data-disk /sysroot/etc/arch-root/raw-data-disk
+fi
+
+# TPM-encrypted persistent var store (optional)
+var_img="/run/archboot/crypt/var-store.luks"
+var_mapper="arch_var"
+var_mnt="/run/archvar"
+var_ready=0
+
+if [[ -f "${var_img}" ]]; then
+    var_loop=$(losetup --find --show "${var_img}" 2>/dev/null || true)
+    if [[ -n "${var_loop}" ]]; then
+        if systemd-cryptsetup attach "${var_mapper}" "${var_loop}" - \
+                tpm2-device=auto,tpm2-pcrs=11 2>/dev/null; then
+            mkdir -p "${var_mnt}"
+            if mount -o compress=zstd:6,noatime \
+                    "/dev/mapper/${var_mapper}" "${var_mnt}" 2>/dev/null; then
+                mkdir -p "${var_mnt}/log" "${var_mnt}/cache"
+                mount --bind "${var_mnt}/log" /sysroot/var/log
+                mount --bind "${var_mnt}/cache" /sysroot/var/cache
+                var_ready=1
+                log "Mounted TPM-encrypted persistent /var/log and /var/cache"
+            fi
+        fi
+    fi
+fi
+
+if [[ "${var_ready}" -eq 0 ]]; then
+    mount -t tmpfs -o mode=0755,nosuid,nodev,noexec tmpfs /sysroot/var/log 2>/dev/null || true
+    mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /sysroot/var/cache 2>/dev/null || true
+    log "Using tmpfs for /var/log and /var/cache"
+fi
+
+log "Root ready (mode: ${boot_mode})"

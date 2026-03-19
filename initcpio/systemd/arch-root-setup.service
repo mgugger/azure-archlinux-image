@@ -1,0 +1,14 @@
+[Unit]
+Description=Set up Arch Linux root (squashfs overlay or data disk)
+DefaultDependencies=no
+After=sysroot.mount systemd-cryptsetup@arch_root.service
+Before=initrd-root-fs.target
+ConditionKernelCommandLine=arch_boot
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/lib/arch-root/setup-root
+
+[Install]
+RequiredBy=initrd-root-fs.target

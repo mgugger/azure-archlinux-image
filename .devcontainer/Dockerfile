@@ -14,8 +14,12 @@ RUN pacman -Syu --noconfirm && \
         python-pip \
         util-linux \
         git \
+        cdrtools \
         sudo \
-        nano && \
+        nano \
+        qemu-system-x86 \
+        swtpm \
+        edk2-ovmf && \
     pip install --no-cache-dir azure-cli && \
     pacman -Scc --noconfirm
 
