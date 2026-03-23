@@ -17,7 +17,7 @@ TimeoutStartSec=1800
 
 # Security hardening for the provisioning service itself
 ProtectHome=yes
-NoNewPrivileges=no
+NoNewPrivileges=yes
 PrivateTmp=yes
 
 [Install]

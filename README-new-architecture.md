@@ -26,7 +26,7 @@ Boot VHD (~1.5GB)                     Data Disk (attached in Azure)
 
 ### Boot Flow
 
-1. **UKI boots** → initramfs runs `arch-root-discover` hook
+1. **UKI boots** → initramfs runs `arch-root-setup.service` (`setup-root`)
 2. **Data disk with LUKS found** → vTPM unseals key → mount BTRFS subvols → boot into data disk root
 3. **Raw/unformatted data disk found** → boot into squashfs + overlayfs → `provision-data-disk.service` runs:
    - LUKS2 format + `systemd-cryptenroll --tpm2-device=auto --tpm2-pcrs=11`
@@ -108,10 +108,9 @@ If the data disk is removed or fails, the VM boots into the squashfs maintenance
 build.sh                          # Build script (replaces Packer)
 packages.conf                     # Package lists for squashfs + full install
 initcpio/
-  hooks/arch-root-discover        # Initramfs: detect data disk + vTPM unlock
-  hooks/squashfs-overlay           # Initramfs: squashfs + overlayfs mount
-  install/arch-root-discover       # Initramfs: install hook
   install/squashfs-overlay         # Initramfs: install hook
+  systemd/arch-root-setup.service  # Initramfs: orchestrates root selection
+  systemd/setup-root               # Initramfs: data-disk or squashfs setup logic
 first-boot/
   provision-data-disk.sh           # First-boot: encrypt, format, install
   provision-data-disk.service      # systemd unit for provisioning

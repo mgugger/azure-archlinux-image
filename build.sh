@@ -15,7 +15,6 @@ IMAGE_NAME="archlinux"
 WORK_DIR="$(pwd)/work"
 OUT_DIR="$(pwd)/out"
 SQUASHFS_PACKAGES="packages.conf"
-LOOP_DEV=""
 ESP_LOOP_DEV=""
 ROOT_LOOP_DEV=""
 KEY_VAULT_NAME="${KEY_VAULT_NAME:-}"
@@ -38,7 +37,43 @@ USE_SHIM="${USE_SHIM:-1}"
 CHAINLOAD_UKI="${CHAINLOAD_UKI:-1}"
 
 # Source package lists
+# shellcheck disable=SC1090
 source "${SQUASHFS_PACKAGES}"
+
+# Ensure IgnorePkg is placed under [options], not appended at EOF.
+ensure_ignore_pkg_in_pacman_conf() {
+    local conf_path="$1"
+    local ignore_value="$2"
+
+    if grep -Eq '^IgnorePkg[[:space:]]*=' "$conf_path"; then
+        sed -i -E "s|^IgnorePkg[[:space:]]*=.*|IgnorePkg = ${ignore_value}|" "$conf_path"
+        return
+    fi
+
+    awk -v ignore_line="IgnorePkg = ${ignore_value}" '
+        BEGIN { in_options=0; inserted=0 }
+        /^\[options\][[:space:]]*$/ { in_options=1; print; next }
+        /^\[[^]]+\][[:space:]]*$/ {
+            if (in_options && !inserted) {
+                print ignore_line
+                inserted=1
+            }
+            in_options=0
+            print
+            next
+        }
+        { print }
+        END {
+            if (!inserted) {
+                if (!in_options) {
+                    print "[options]"
+                }
+                print ignore_line
+            }
+        }
+    ' "$conf_path" > "${conf_path}.tmp"
+    mv "${conf_path}.tmp" "$conf_path"
+}
 
 cleanup() {
     echo ":: Cleaning up..."
@@ -50,9 +85,6 @@ cleanup() {
     fi
     if mountpoint -q "${WORK_DIR}/squashfs-root" 2>/dev/null; then
         umount -R "${WORK_DIR}/squashfs-root" || true
-    fi
-    if [[ -n "${LOOP_DEV}" ]]; then
-        losetup -d "${LOOP_DEV}" 2>/dev/null || true
     fi
     if [[ -n "${ESP_LOOP_DEV}" ]]; then
         losetup -d "${ESP_LOOP_DEV}" 2>/dev/null || true
@@ -76,25 +108,6 @@ ensure_loop_nodes() {
             mknod "/dev/loop${i}" b 7 "${i}" 2>/dev/null || true
         fi
     done
-}
-
-attach_loop_device() {
-    local image_path="$1"
-    local attempt=1
-
-    ensure_loop_nodes
-
-    while (( attempt <= 3 )); do
-        if LOOP_DEV=$(losetup --find --show --partscan "${image_path}" 2>/dev/null); then
-            return 0
-        fi
-        sleep 1
-        ensure_loop_nodes
-        ((attempt++))
-    done
-
-    echo "Error: failed to attach loop device for ${image_path}" >&2
-    return 1
 }
 
 attach_partition_loop_devices() {
@@ -198,10 +211,7 @@ if [[ ${#PACMAN_IGNORE_PACKAGES[@]} -gt 0 ]]; then
     # Use a temporary pacman.conf with IgnorePkg and pass it via -C.
     PACSTRAP_TMP_CONF="${WORK_DIR}/pacman.pacstrap.conf"
     cp /etc/pacman.conf "${PACSTRAP_TMP_CONF}"
-    {
-        printf '\n# Added by build.sh for pacstrap ignore handling\n'
-        printf 'IgnorePkg = %s\n' "${PACMAN_IGNORE_PACKAGES[*]}"
-    } >> "${PACSTRAP_TMP_CONF}"
+    ensure_ignore_pkg_in_pacman_conf "${PACSTRAP_TMP_CONF}" "${PACMAN_IGNORE_PACKAGES[*]}"
 
     pacstrap -C "${PACSTRAP_TMP_CONF}" -c -G -M \
         "${WORK_DIR}/squashfs-root" "${SQUASHFS_BASE_PACKAGES[@]}"
@@ -230,13 +240,17 @@ compression-algorithm = zstd
 swap-priority = 100
 EOF
 
-# Enable essential services in squashfs (NO cloud-init — it runs on data disk only)
-# Emergency access is via Azure Serial Console, no SSH needed in squashfs
+# Enable essential services in squashfs.
+# cloud-init/sshd packages are pre-baked for the data-disk root copy, but services
+# are enabled later in provisioning after disk migration.
+# Emergency access in squashfs remains Azure Serial Console.
 arch-chroot "${WORK_DIR}/squashfs-root" bash -c '
     sed -i "s/^#en_US.UTF-8/en_US.UTF-8/" /etc/locale.gen
     locale-gen
     systemctl enable systemd-networkd
     systemctl enable systemd-resolved
+    # Keep cloud-init inactive in squashfs; it is enabled later on the data-disk root.
+    systemctl mask cloud-init.target cloud-init-local.service cloud-init-network.service cloud-init-main.service cloud-final.service
     systemctl mask systemd-boot-update.service
     if ! ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf; then
         echo "WARNING: could not update /etc/resolv.conf in squashfs root; keeping existing file." >&2
@@ -258,6 +272,18 @@ install -Dm755 first-boot/provision-data-disk.sh \
     "${WORK_DIR}/squashfs-root/usr/local/bin/provision-data-disk.sh"
 install -Dm644 first-boot/provision-data-disk.service \
     "${WORK_DIR}/squashfs-root/etc/systemd/system/provision-data-disk.service"
+install -Dm644 packages.conf \
+    "${WORK_DIR}/squashfs-root/usr/local/share/arch-image/packages.conf"
+
+# Install staged provisioning helpers and root overlay assets
+install -Dm755 first-boot/provision.d/20-hardening-overlay.sh \
+    "${WORK_DIR}/squashfs-root/usr/local/lib/provision.d/20-hardening-overlay.sh"
+install -Dm755 first-boot/provision.d/25-hardening-config.sh \
+    "${WORK_DIR}/squashfs-root/usr/local/lib/provision.d/25-hardening-config.sh"
+install -Dm755 first-boot/provision.d/30-cloud-init-services.sh \
+    "${WORK_DIR}/squashfs-root/usr/local/lib/provision.d/30-cloud-init-services.sh"
+install -d -m755 "${WORK_DIR}/squashfs-root/usr/local/share/provision-overlay"
+cp -a first-boot/root-overlay/. "${WORK_DIR}/squashfs-root/usr/local/share/provision-overlay/"
 
 # Enable first-boot provisioning (ConditionFirstBoot or check file)
 arch-chroot "${WORK_DIR}/squashfs-root" systemctl enable provision-data-disk.service
@@ -684,11 +710,6 @@ if [[ -n "${ROOT_LOOP_DEV}" ]]; then
     losetup -d "${ROOT_LOOP_DEV}" || true
     ROOT_LOOP_DEV=""
 fi
-if [[ -n "${LOOP_DEV}" ]]; then
-    losetup -d "${LOOP_DEV}" || true
-    LOOP_DEV=""
-fi
-
 # Convert to VHD (Azure requires fixed-size VHD aligned to 1MB)
 RAW_SIZE=$(stat --format=%s "${WORK_DIR}/${IMAGE_NAME}.raw")
 ALIGNED_SIZE=$(( (RAW_SIZE + 1048576 - 1) / 1048576 * 1048576 ))

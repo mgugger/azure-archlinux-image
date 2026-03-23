@@ -19,10 +19,95 @@ MAPPER_NAME="arch_root"
 VAR_MAPPER_NAME="arch_var"
 VAR_CONTAINER_SIZE="768M"
 SECURE_BOOT_PRIVATE_KEY_SECRET_NAME="${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME:-secure-boot-private-key}"
-SECURE_BOOT_CERTIFICATE_SECRET_NAME="${SECURE_BOOT_CERTIFICATE_SECRET_NAME:-secure-boot-certificate}"
+
+FULL_INSTALL_PACKAGES=()
+if [[ -r /usr/local/share/arch-image/packages.conf ]]; then
+    # shellcheck disable=SC1091
+    source /usr/local/share/arch-image/packages.conf
+fi
+
+if [[ ${#FULL_INSTALL_PACKAGES[@]} -eq 0 ]]; then
+    FULL_INSTALL_PACKAGES=(
+        base linux-hardened openssh base-devel apparmor btrfs-progs
+        nano python sudo wireguard-tools audit systemd-ukify
+        tpm2-tools tpm2-tss zram-generator
+    )
+fi
 
 # Explicitly block firmware bundles not needed for Azure VMs.
 PACMAN_IGNORE_PACKAGES=(linux-firmware linux-hardened)
+
+secure_boot_enabled() {
+    local sb_var sb_state
+    sb_var=$(ls /sys/firmware/efi/efivars/SecureBoot-* 2>/dev/null | head -n1 || true)
+    [[ -n "$sb_var" ]] || return 1
+
+    # efivar payload starts with 4-byte attributes; byte 5 is SecureBoot state.
+    sb_state=$(od -An -t u1 -j4 -N1 "$sb_var" 2>/dev/null | tr -d '[:space:]')
+    [[ "$sb_state" == "1" ]]
+}
+
+enroll_tpm2_with_policy() {
+    local luks_dev="$1"
+    local unlock_key_file="$2"
+    local enroll_args=(--tpm2-device=auto --unlock-key-file="$unlock_key_file")
+
+    if secure_boot_enabled; then
+        echo ":: Secure Boot is enabled — enrolling TPM2 key with PCR 7 policy"
+        enroll_args+=(--tpm2-pcrs=7)
+    else
+        echo ":: Secure Boot is not enabled — enrolling TPM2 key without PCR policy"
+    fi
+
+    systemd-cryptenroll "${enroll_args[@]}" "$luks_dev"
+}
+
+# Ensure IgnorePkg is placed under [options], not at EOF where it may be ignored.
+ensure_ignore_pkg_in_pacman_conf() {
+    local conf_path="$1"
+    local ignore_value="$2"
+
+    if grep -Eq '^IgnorePkg[[:space:]]*=' "$conf_path"; then
+        sed -i -E "s|^IgnorePkg[[:space:]]*=.*|IgnorePkg = ${ignore_value}|" "$conf_path"
+        return
+    fi
+
+    awk -v ignore_line="IgnorePkg = ${ignore_value}" '
+        BEGIN { in_options=0; inserted=0 }
+        /^\[options\][[:space:]]*$/ { in_options=1; print; next }
+        /^\[[^]]+\][[:space:]]*$/ {
+            if (in_options && !inserted) {
+                print ignore_line
+                inserted=1
+            }
+            in_options=0
+            print
+            next
+        }
+        { print }
+        END {
+            if (!inserted) {
+                if (!in_options) {
+                    print "[options]"
+                }
+                print ignore_line
+            }
+        }
+    ' "$conf_path" > "${conf_path}.tmp"
+    mv "${conf_path}.tmp" "$conf_path"
+}
+
+run_provision_stage_scripts() {
+    local stage_dir="/usr/local/lib/provision.d"
+    local stage
+
+    [[ -d "${stage_dir}" ]] || return 0
+
+    while IFS= read -r -d '' stage; do
+        echo ":: Running provision stage: $(basename "${stage}")"
+        MOUNT_ROOT="${MOUNT_ROOT}" bash "${stage}"
+    done < <(find "${stage_dir}" -maxdepth 1 -type f -name '*.sh' -print0 | sort -z)
+}
 
 # Check whether a disk contains the archboot partition (OS disk).
 disk_is_os() {
@@ -198,10 +283,7 @@ setup_osdisk_var_encryption() {
     mkdir -p "${var_mount}/log" "${var_mount}/cache"
     umount "${var_mount}"
 
-    systemd-cryptenroll --tpm2-device=auto \
-        --tpm2-pcrs=11 \
-        --unlock-key-file="${keyfile}" \
-        "${var_loop}"
+    enroll_tpm2_with_policy "${var_loop}" "${keyfile}"
 
     shred -u "${keyfile}" 2>/dev/null || rm -f "${keyfile}"
 
@@ -256,12 +338,10 @@ udevadm lock --device="${DATA_DISK}" cryptsetup luksFormat --type luks2 \
 # Open for formatting
 udevadm lock --device="${DATA_DISK}" cryptsetup open --key-file "${KEYFILE}" "${DATA_DISK}" "${MAPPER_NAME}"
 
-# Enroll TPM2 — binds to PCR 11 (UKI components measured by systemd-stub)
-echo ":: Enrolling vTPM key (PCR 11)..."
-systemd-cryptenroll --tpm2-device=auto \
-    --tpm2-pcrs=11 \
-    --unlock-key-file="${KEYFILE}" \
-    "${DATA_DISK}"
+# Enroll TPM2 key for arch_root. Use PCR 7 only when Secure Boot is enabled;
+# otherwise enroll without a PCR policy so non-Secure-Boot test boots work.
+echo ":: Enrolling vTPM key..."
+enroll_tpm2_with_policy "${DATA_DISK}" "${KEYFILE}"
 
 shred -u "${KEYFILE}" 2>/dev/null || rm -f "${KEYFILE}"
 
@@ -345,7 +425,6 @@ echo ":: Step 3 — Installing system from squashfs..."
 
 # Extract the squashfs directly onto the data disk. This is faster than pacstrap
 # (no network download) and preserves the exact package set from the image.
-# cloud-init is not in the squashfs — it gets installed in the next step.
 # Try the direct SFS file on the BTRFS boot partition first, then fall back
 # to the mounted squashfs, then pacstrap.
 SFS_IMAGE=""
@@ -371,25 +450,20 @@ else
     if [[ ${#PACMAN_IGNORE_PACKAGES[@]} -gt 0 ]]; then
         PACSTRAP_TMP_CONF="/tmp/pacman.pacstrap.conf"
         cp /etc/pacman.conf "${PACSTRAP_TMP_CONF}"
-        {
-            printf '\n# Added by provision-data-disk.sh for pacstrap ignore handling\n'
-            printf 'IgnorePkg = %s\n' "${PACMAN_IGNORE_PACKAGES[*]}"
-        } >> "${PACSTRAP_TMP_CONF}"
+        ensure_ignore_pkg_in_pacman_conf "${PACSTRAP_TMP_CONF}" "${PACMAN_IGNORE_PACKAGES[*]}"
 
         pacstrap -C "${PACSTRAP_TMP_CONF}" -c "${MOUNT_ROOT}" \
-            base linux-hardened openssh base-devel apparmor btrfs-progs \
-            nano python sudo wireguard-tools audit systemd-ukify \
-            tpm2-tools tpm2-tss zram-generator
+            "${FULL_INSTALL_PACKAGES[@]}"
     else
-        pacstrap -c "${MOUNT_ROOT}" base linux-hardened openssh base-devel \
-            apparmor btrfs-progs nano python sudo wireguard-tools audit \
-            systemd-ukify tpm2-tools tpm2-tss zram-generator
+        pacstrap -c "${MOUNT_ROOT}" "${FULL_INSTALL_PACKAGES[@]}"
     fi
 fi
 
 # Remove squashfs-only artifacts that don't belong on the data disk
 rm -f "${MOUNT_ROOT}/usr/local/bin/provision-data-disk.sh"
 rm -f "${MOUNT_ROOT}/etc/systemd/system/provision-data-disk.service"
+rm -rf "${MOUNT_ROOT}/usr/local/lib/provision.d"
+rm -rf "${MOUNT_ROOT}/usr/local/share/provision-overlay"
 
 # Ensure the chroot has a pacman.conf (squashfs base may not include one)
 if [[ ! -f "${MOUNT_ROOT}/etc/pacman.conf" ]]; then
@@ -397,7 +471,7 @@ if [[ ! -f "${MOUNT_ROOT}/etc/pacman.conf" ]]; then
 fi
 # Apply IgnorePkg to the chroot's pacman.conf
 if [[ ${#PACMAN_IGNORE_PACKAGES[@]} -gt 0 ]]; then
-    printf 'IgnorePkg = %s\n' "${PACMAN_IGNORE_PACKAGES[*]}" >> "${MOUNT_ROOT}/etc/pacman.conf"
+    ensure_ignore_pkg_in_pacman_conf "${MOUNT_ROOT}/etc/pacman.conf" "${PACMAN_IGNORE_PACKAGES[*]}"
 fi
 
 # Ensure mirrorlist is available (squashfs built with pacstrap -M may lack it)
@@ -415,30 +489,12 @@ fi
 # Generate fstab
 genfstab -U "${MOUNT_ROOT}" > "${MOUNT_ROOT}/etc/fstab"
 
-# Initialise pacman keyring (needed for fresh squashfs extract)
-arch-chroot "${MOUNT_ROOT}" bash -c '
-    pacman-key --init
-    pacman-key --populate archlinux
-'
+# Packages are pre-baked into squashfs to keep first-boot deterministic.
+# Do not run pacman transactions here; package upgrades can trigger initramfs
+# rebuilds and alter PCR measurements during the provisioning boot.
+echo ":: Using pre-baked openssh/cloud-init/cloud-utils from squashfs copy."
 
-# Update system and install cloud-init + openssh (not in squashfs to keep it small)
-echo ":: Updating system and installing cloud-init, openssh..."
-arch-chroot "${MOUNT_ROOT}" pacman -Syu --noconfirm openssh cloud-init cloud-utils
-
-# Enable services on the data disk
-arch-chroot "${MOUNT_ROOT}" bash -c '
-    systemctl enable sshd
-    systemctl enable cloud-init-main.service
-    systemctl enable cloud-init-network.service
-    systemctl enable cloud-final.service
-'
-
-# Regenerate locale (squashfs strips /usr/share/i18n/locales to save space;
-# the pacman -Syu above restores glibc's locale data)
-arch-chroot "${MOUNT_ROOT}" bash -c '
-    sed -i "s/^#en_US.UTF-8/en_US.UTF-8/" /etc/locale.gen
-    locale-gen
-'
+run_provision_stage_scripts
 
 # Clean cloud-init state so it treats the data disk root as a fresh instance
 rm -rf "${MOUNT_ROOT}/var/lib/cloud"
