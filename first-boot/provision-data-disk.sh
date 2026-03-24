@@ -19,6 +19,7 @@ MAPPER_NAME="arch_root"
 VAR_MAPPER_NAME="arch_var"
 VAR_CONTAINER_SIZE="768M"
 SECURE_BOOT_PRIVATE_KEY_SECRET_NAME="${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME:-secure-boot-private-key}"
+ROOT_PASSWORD_SECRET_NAME="${ROOT_PASSWORD_SECRET_NAME:-root-login-password}"
 
 FULL_INSTALL_PACKAGES=()
 if [[ -r /usr/local/share/arch-image/packages.conf ]]; then
@@ -206,6 +207,18 @@ fetch_private_key_from_keyvault() {
         | python -c 'import json,sys; print(json.load(sys.stdin)["value"], end="")' \
         > "${out_path}"
     chmod 600 "${out_path}"
+}
+
+fetch_secret_value_from_keyvault() {
+    local kv_name="$1"
+    local secret_name="$2"
+    local token
+
+    token="$(get_imds_token)"
+
+    curl -fsS -H "Authorization: Bearer ${token}" \
+        "https://${kv_name}.vault.azure.net/secrets/${secret_name}?api-version=7.4" \
+        | python -c 'import json,sys; print(json.load(sys.stdin)["value"], end="")'
 }
 
 store_secret_in_keyvault() {
@@ -547,9 +560,24 @@ else
     echo "UKI will not be signed. Set VM tag 'KeyVaultName=<name>' for Secure Boot."
 fi
 
+# Fetch and apply root password from Key Vault so console access requires auth.
+if [[ -n "${KEY_VAULT_NAME}" ]]; then
+    echo ":: Fetching root password from Key Vault '${KEY_VAULT_NAME}'..."
+    ROOT_PASSWORD_VALUE="$(fetch_secret_value_from_keyvault "${KEY_VAULT_NAME}" "${ROOT_PASSWORD_SECRET_NAME}" 2>/dev/null || true)"
+    if [[ -n "${ROOT_PASSWORD_VALUE}" ]]; then
+        printf 'root:%s\n' "${ROOT_PASSWORD_VALUE}" | arch-chroot "${MOUNT_ROOT}" chpasswd
+        echo ":: Root password updated from Key Vault secret '${ROOT_PASSWORD_SECRET_NAME}'."
+    else
+        echo "WARNING: Could not fetch root password secret '${ROOT_PASSWORD_SECRET_NAME}' from Key Vault."
+    fi
+else
+    echo "WARNING: No KeyVaultName VM tag found. Skipping root password fetch."
+fi
+
 cat > "${MOUNT_ROOT}/etc/arch-keyvault.conf" << EOF
 KEY_VAULT_NAME="${KEY_VAULT_NAME}"
 SECURE_BOOT_PRIVATE_KEY_SECRET_NAME="${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME}"
+ROOT_PASSWORD_SECRET_NAME="${ROOT_PASSWORD_SECRET_NAME}"
 SECURE_BOOT_ENABLED=${SECURE_BOOT_ENABLED}
 EOF
 chmod 0600 "${MOUNT_ROOT}/etc/arch-keyvault.conf"

@@ -340,7 +340,6 @@
       - -S
       - --noconfirm
       - mkinitcpio-systemd-tool
-      - mokutil
 
 - name: Enable initrd-network.service in chroot
   command:
@@ -622,9 +621,6 @@
       done < <(find /efi -type f -name "*.efi")
 
       rm -f "${PEM_PATH}"
-
-      log "Importing MOK certificate..."
-      mokutil --import "${CRT_PATH}"
 
 - name: Install setup script to enroll arch_root TPM2 token
   copy:

@@ -94,13 +94,15 @@ az deployment group create \
 ### Secure Boot Private Key Flow
 
 * Build time: key is generated, used for signing UKI/systemd-boot, uploaded to Key Vault, then shredded from the build workspace
+* Build time: a random 64-character root password is generated and uploaded to Key Vault as `root-login-password` (override with `ROOT_PASSWORD_SECRET_NAME`)
 * Boot disk image: only the public certificate is included
 * Provisioning: private key is fetched via managed identity and stored on encrypted data disk only
+* Provisioning: root password is fetched from Key Vault and applied to the data-disk root
 * Runtime updates: `/usr/local/bin/secure-boot-resign` uses local encrypted key and can recover it from Key Vault if missing
 
 ### Recovery / Maintenance
 
-If the data disk is removed or fails, the VM boots into the squashfs maintenance environment with SSH access via cloud-init credentials.
+If the data disk is removed or fails, the VM boots into the squashfs maintenance environment with password-based root login on console only (sshd is masked).
 
 ## Repository Structure
 

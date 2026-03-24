@@ -1,0 +1,20 @@
+[Unit]
+Description=Report VM ready to Azure wireserver
+Documentation=https://learn.microsoft.com/en-us/azure/virtual-machines/linux/no-agent
+After=network-online.target systemd-resolved.service
+Wants=network-online.target
+# Only run in squashfs boot modes (recovery/provisioning).
+# On data-disk boot, cloud-init reports ready instead.
+ConditionPathExists=/etc/arch-root/boot-mode
+ConditionPathExists=!/etc/arch-root-provisioned
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/azure-report-ready.sh
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

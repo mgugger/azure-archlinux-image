@@ -10,7 +10,8 @@
 set -euo pipefail
 
 ### Configuration ###
-IMAGE_SIZE="2G"
+IMAGE_SIZE="1536M"
+ARCHBOOT_PARTITION_SIZE="400M"
 IMAGE_NAME="archlinux"
 WORK_DIR="$(pwd)/work"
 OUT_DIR="$(pwd)/out"
@@ -20,6 +21,7 @@ ROOT_LOOP_DEV=""
 KEY_VAULT_NAME="${KEY_VAULT_NAME:-}"
 SECURE_BOOT_PRIVATE_KEY_SECRET_NAME="${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME:-secure-boot-private-key}"
 SECURE_BOOT_CERTIFICATE_SECRET_NAME="${SECURE_BOOT_CERTIFICATE_SECRET_NAME:-secure-boot-certificate}"
+ROOT_PASSWORD_SECRET_NAME="${ROOT_PASSWORD_SECRET_NAME:-root-login-password}"
 
 SECURE_BOOT_PRIVATE_KEY_PATH="${WORK_DIR}/secure-boot-private-key.pem"
 SECURE_BOOT_CERTIFICATE_PATH="${WORK_DIR}/secure-boot-certificate.pem"
@@ -39,6 +41,11 @@ CHAINLOAD_UKI="${CHAINLOAD_UKI:-1}"
 # Source package lists
 # shellcheck disable=SC1090
 source "${SQUASHFS_PACKAGES}"
+
+generate_password_64() {
+    # Base64 output is trimmed to 64 chars for a fixed-length high-entropy password.
+    openssl rand -base64 96 | tr -d '\n' | head -c 64
+}
 
 # Ensure IgnorePkg is placed under [options], not appended at EOF.
 ensure_ignore_pkg_in_pacman_conf() {
@@ -130,7 +137,9 @@ attach_partition_loop_devices() {
 import json, sys
 pt = json.loads(sys.stdin.read())['partitiontable']['partitions']
 esp = next(p for p in pt if 'C12A7328' in p['type'].upper())
-root = next(p for p in pt if '0FC63DAF' in p['type'].upper())
+root = next((p for p in pt if p.get('name') == 'Arch Root'), None)
+if root is None:
+    root = next(p for p in pt if '0FC63DAF' in p['type'].upper())
 print(esp['start']*512, esp['size']*512, root['start']*512, root['size']*512)
 " <<< "${part_json}"
     )
@@ -267,11 +276,37 @@ DHCP=yes
 DNS=168.63.129.16
 EOF
 
+# Set a strong root password for recovery console access.
+# Try Key Vault first to reuse an existing password; generate a fresh one otherwise.
+ROOT_LOGIN_PASSWORD=""
+EXISTING_ROOT_PASSWORD=""
+if az keyvault secret show \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${ROOT_PASSWORD_SECRET_NAME}" \
+        --only-show-errors >/dev/null 2>&1; then
+    EXISTING_ROOT_PASSWORD="$(az keyvault secret show \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${ROOT_PASSWORD_SECRET_NAME}" \
+        --query value -o tsv --only-show-errors)"
+fi
+
+if [[ -n "${EXISTING_ROOT_PASSWORD}" ]]; then
+    echo ":: Reusing existing root login password from Key Vault."
+    ROOT_LOGIN_PASSWORD="${EXISTING_ROOT_PASSWORD}"
+else
+    ROOT_LOGIN_PASSWORD="$(generate_password_64)"
+fi
+printf 'root:%s\n' "${ROOT_LOGIN_PASSWORD}" | arch-chroot "${WORK_DIR}/squashfs-root" chpasswd
+
 # Install first-boot service and script
 install -Dm755 first-boot/provision-data-disk.sh \
     "${WORK_DIR}/squashfs-root/usr/local/bin/provision-data-disk.sh"
 install -Dm644 first-boot/provision-data-disk.service \
     "${WORK_DIR}/squashfs-root/etc/systemd/system/provision-data-disk.service"
+install -Dm755 first-boot/azure-report-ready.sh \
+    "${WORK_DIR}/squashfs-root/usr/local/bin/azure-report-ready.sh"
+install -Dm644 first-boot/azure-report-ready.service \
+    "${WORK_DIR}/squashfs-root/etc/systemd/system/azure-report-ready.service"
 install -Dm644 packages.conf \
     "${WORK_DIR}/squashfs-root/usr/local/share/arch-image/packages.conf"
 
@@ -287,6 +322,7 @@ cp -a first-boot/root-overlay/. "${WORK_DIR}/squashfs-root/usr/local/share/provi
 
 # Enable first-boot provisioning (ConditionFirstBoot or check file)
 arch-chroot "${WORK_DIR}/squashfs-root" systemctl enable provision-data-disk.service
+arch-chroot "${WORK_DIR}/squashfs-root" systemctl enable azure-report-ready.service
 
 # Install secure-boot resign script and pacman hook into the base image.
 install -d -m755 "${WORK_DIR}/squashfs-root/usr/local/bin"
@@ -457,6 +493,7 @@ find "${SQROOT}/usr/share/locale" -mindepth 1 -maxdepth 1 \
 
 # i18n not needed
 rm -rf "${SQROOT}/usr/share/i18n/locales" 2>/dev/null || true
+rm -rf "${SQROOT}/usr/share/i18n/charmaps" 2>/dev/null || true
 
 # Python bytecode caches
 find "${SQROOT}" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
@@ -465,11 +502,52 @@ find "${SQROOT}" -name '*.pyc' -delete 2>/dev/null || true
 # Static libraries (not needed at runtime)
 find "${SQROOT}/usr/lib" -name '*.a' -delete 2>/dev/null || true
 
+# Header files (not needed at runtime)
+rm -rf "${SQROOT}/usr/include" 2>/dev/null || true
+
+# Pacman GnuPG trust DB — strip private keys and non-essential files but keep
+# the pubring so pacman signature verification works on the data-disk copy.
+rm -rf "${SQROOT}/etc/pacman.d/gnupg/private-keys-v1.d" \
+       "${SQROOT}/etc/pacman.d/gnupg/S."* \
+       "${SQROOT}/etc/pacman.d/gnupg/openpgp-revocs.d" \
+       2>/dev/null || true
+
+# Unused kernel modules — keep only what Azure Hyper-V and provisioning need
+KVER_TRIM=$(ls "${SQROOT}/lib/modules/" | head -1)
+if [[ -n "${KVER_TRIM}" ]]; then
+    KMOD="${SQROOT}/lib/modules/${KVER_TRIM}/kernel"
+    # Remove entire subsystems not needed on Azure
+    rm -rf "${KMOD}/sound" \
+           "${KMOD}/drivers/gpu" \
+           "${KMOD}/drivers/media" \
+           "${KMOD}/drivers/staging" \
+           "${KMOD}/drivers/usb" \
+           "${KMOD}/drivers/bluetooth" \
+           "${KMOD}/drivers/infiniband" \
+           "${KMOD}/drivers/isdn" \
+           "${KMOD}/drivers/firewire" \
+           "${KMOD}/drivers/input/joystick" \
+           "${KMOD}/drivers/input/touchscreen" \
+           "${KMOD}/drivers/input/gameport" \
+           "${KMOD}/drivers/nfc" \
+           "${KMOD}/drivers/iio" \
+           "${KMOD}/drivers/hwmon" \
+           "${KMOD}/drivers/leds" \
+           "${KMOD}/drivers/parport" \
+           "${KMOD}/drivers/pcmcia" \
+           "${KMOD}/drivers/ssb" \
+           "${KMOD}/drivers/thunderbolt" \
+           "${KMOD}/drivers/w1" \
+           "${KMOD}/net/wireless" \
+           "${KMOD}/net/bluetooth" \
+           "${KMOD}/net/mac80211" \
+           2>/dev/null || true
+    # Rebuild module dependency index after pruning
+    depmod -a -b "${SQROOT}" "${KVER_TRIM}" 2>/dev/null || true
+fi
+
 # Leftover log files from chroot operations
 rm -rf "${SQROOT}/var/log/"* 2>/dev/null || true
-
-# GnuPG socket leftovers from pacman-key
-rm -rf "${SQROOT}/etc/pacman.d/gnupg/S."* 2>/dev/null || true
 
 # /tmp cruft
 rm -rf "${SQROOT}/tmp/"* 2>/dev/null || true
@@ -491,17 +569,24 @@ echo ":: Phase 2 — Building VHD image..."
 # Create raw disk image
 truncate -s "${IMAGE_SIZE}" "${WORK_DIR}/${IMAGE_NAME}.raw"
 
-# Partition: 256MB ESP + rest for root
-sfdisk "${WORK_DIR}/${IMAGE_NAME}.raw" << 'EOF'
+# Partition: 256MB ESP + fixed Arch Root + remaining free space reserved as Arch Var
+sfdisk "${WORK_DIR}/${IMAGE_NAME}.raw" << EOF
 label: gpt
 size=256M, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name="EFI System"
-type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="Arch Root"
+size=${ARCHBOOT_PARTITION_SIZE}, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="Arch Root"
+type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, name="Arch Var"
 EOF
 
 # Read back the exact root partition size (in sectors) that sfdisk wrote.
 # This accounts for GPT backup and MiB alignment automatically.
-ROOT_PART_SECTORS=$(sfdisk -d "${WORK_DIR}/${IMAGE_NAME}.raw" \
-    | grep '0FC63DAF' | sed -n 's/.*size= *\([0-9][0-9]*\).*/\1/p')
+ROOT_PART_SECTORS=$(sfdisk -J "${WORK_DIR}/${IMAGE_NAME}.raw" | python3 -c '
+import json, sys
+parts = json.load(sys.stdin)["partitiontable"]["partitions"]
+root = next((p for p in parts if p.get("name") == "Arch Root"), None)
+if root is None:
+    raise SystemExit(1)
+print(root["size"])
+')
 ROOT_PART_BYTES=$(( ROOT_PART_SECTORS * 512 ))
 echo ":: Root partition: ${ROOT_PART_SECTORS} sectors = ${ROOT_PART_BYTES} bytes"
 
@@ -569,8 +654,15 @@ fi
 
 # Create mkinitcpio preset for the boot image
 cat > "${WORK_DIR}/squashfs-root/etc/mkinitcpio.conf.d/azure-boot.conf" << 'MKINITCONF'
-MODULES=(hv_vmbus hv_storvsc hv_netvsc hv_utils squashfs overlay loop)
-HOOKS=(systemd modconf kms block sd-encrypt squashfs-overlay filesystems)
+# Azure/Hyper-V drivers, squashfs overlay stack, LUKS + BTRFS for data disk,
+# virtio/NVMe for alternative VM types.  Explicit list avoids pulling in
+# the entire block subsystem (parport, pcmcia, InfiniBand, etc.) which
+# linux-hardened does not build.
+MODULES=(hv_vmbus hv_storvsc hv_netvsc hv_utils
+         squashfs overlay loop
+         dm-crypt btrfs vfat
+         virtio_blk virtio_scsi virtio_pci nvme)
+HOOKS=(systemd modconf sd-encrypt squashfs-overlay)
 COMPRESSION="zstd"
 MKINITCONF
 
@@ -592,29 +684,77 @@ intel_iommu=on amd_iommu=on
 arch_boot=squashfs
 CMDLINE
 
-# Create build-time signing keys. The private key is uploaded to Key Vault,
-# used for signing now, and shredded before image finalization.
-echo ":: Generating Secure Boot signing keypair..."
-openssl req -new -x509 -newkey rsa:4096 -sha256 -nodes -days 3650 \
-    -subj "/CN=ArchLinux Azure Secure Boot/" \
-    -keyout "${SECURE_BOOT_PRIVATE_KEY_PATH}" \
-    -out "${SECURE_BOOT_CERTIFICATE_PATH}"
+# Retrieve or create Secure Boot signing keys.
+# Reuse existing Key Vault secrets when both private key and certificate are
+# present.  If only the private key exists (no public certificate), regenerate
+# the pair so both halves are always in sync.
+EXISTING_PRIVATE_KEY=""
+EXISTING_CERTIFICATE=""
 
-echo ":: Uploading Secure Boot private key to Azure Key Vault '${KEY_VAULT_NAME}'..."
-az keyvault secret set \
-    --vault-name "${KEY_VAULT_NAME}" \
-    --name "${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME}" \
-    --file "${SECURE_BOOT_PRIVATE_KEY_PATH}" \
-    --only-show-errors \
-    >/dev/null
+echo ":: Checking Azure Key Vault '${KEY_VAULT_NAME}' for existing Secure Boot secrets..."
+if az keyvault secret show \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME}" \
+        --only-show-errors >/dev/null 2>&1; then
+    EXISTING_PRIVATE_KEY="$(az keyvault secret show \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME}" \
+        --query value -o tsv --only-show-errors)"
+fi
 
-echo ":: Uploading Secure Boot certificate to Azure Key Vault '${KEY_VAULT_NAME}'..."
-az keyvault secret set \
-    --vault-name "${KEY_VAULT_NAME}" \
-    --name "${SECURE_BOOT_CERTIFICATE_SECRET_NAME}" \
-    --file "${SECURE_BOOT_CERTIFICATE_PATH}" \
-    --only-show-errors \
-    >/dev/null
+if az keyvault secret show \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${SECURE_BOOT_CERTIFICATE_SECRET_NAME}" \
+        --only-show-errors >/dev/null 2>&1; then
+    EXISTING_CERTIFICATE="$(az keyvault secret show \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${SECURE_BOOT_CERTIFICATE_SECRET_NAME}" \
+        --query value -o tsv --only-show-errors)"
+fi
+
+if [[ -n "${EXISTING_PRIVATE_KEY}" && -n "${EXISTING_CERTIFICATE}" ]]; then
+    echo ":: Reusing existing Secure Boot keypair from Key Vault."
+    printf '%s\n' "${EXISTING_PRIVATE_KEY}" > "${SECURE_BOOT_PRIVATE_KEY_PATH}"
+    printf '%s\n' "${EXISTING_CERTIFICATE}" > "${SECURE_BOOT_CERTIFICATE_PATH}"
+else
+    if [[ -n "${EXISTING_PRIVATE_KEY}" && -z "${EXISTING_CERTIFICATE}" ]]; then
+        echo ":: Private key found without matching certificate — regenerating keypair."
+    else
+        echo ":: No existing Secure Boot secrets found — generating new keypair."
+    fi
+
+    openssl req -new -x509 -newkey rsa:4096 -sha256 -nodes -days 3650 \
+        -subj "/CN=ArchLinux Azure Secure Boot/" \
+        -keyout "${SECURE_BOOT_PRIVATE_KEY_PATH}" \
+        -out "${SECURE_BOOT_CERTIFICATE_PATH}"
+
+    echo ":: Uploading Secure Boot private key to Azure Key Vault '${KEY_VAULT_NAME}'..."
+    az keyvault secret set \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME}" \
+        --file "${SECURE_BOOT_PRIVATE_KEY_PATH}" \
+        --only-show-errors \
+        >/dev/null
+
+    echo ":: Uploading Secure Boot certificate to Azure Key Vault '${KEY_VAULT_NAME}'..."
+    az keyvault secret set \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${SECURE_BOOT_CERTIFICATE_SECRET_NAME}" \
+        --file "${SECURE_BOOT_CERTIFICATE_PATH}" \
+        --only-show-errors \
+        >/dev/null
+fi
+
+# Upload root login password to Key Vault if it was freshly generated.
+if [[ -z "${EXISTING_ROOT_PASSWORD}" ]]; then
+    echo ":: Uploading root login password to Azure Key Vault '${KEY_VAULT_NAME}'..."
+    az keyvault secret set \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${ROOT_PASSWORD_SECRET_NAME}" \
+        --value "${ROOT_LOGIN_PASSWORD}" \
+        --only-show-errors \
+        >/dev/null
+fi
 
 # Build UKI
 mkdir -p "${WORK_DIR}/mnt/efi/EFI/Linux"
@@ -697,6 +837,9 @@ if [[ -f "${SECURE_BOOT_PRIVATE_KEY_PATH}" ]]; then
         rm -f "${SECURE_BOOT_PRIVATE_KEY_PATH}"
     fi
 fi
+
+# Remove the cleartext root password from process memory as soon as possible.
+unset ROOT_LOGIN_PASSWORD
 
 # Unmount
 sync

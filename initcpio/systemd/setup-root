@@ -155,33 +155,12 @@ else
 fi
 
 ########################################################################
-# Recovery console: serial-console-only autologin (no network access)
+# Recovery console: password login only (no network access)
 ########################################################################
-log "Injecting serial-console autologin into overlay upper (mode: ${boot_mode})"
-
-    # Autologin root on serial console (ttyS0 = Azure Serial Console / KVM stdio)
-    # Azure Serial Console access is governed by Azure RBAC — no network exposure.
-    mkdir -p "${overlay_upper}/etc/systemd/system/serial-getty@ttyS0.service.d"
-    cat > "${overlay_upper}/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf" <<'EOF'
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud 115200,57600,38400,9600 %I $TERM
-EOF
-
-    # Also autologin on tty1 for VGA/KVM console
-    mkdir -p "${overlay_upper}/etc/systemd/system/getty@tty1.service.d"
-    cat > "${overlay_upper}/etc/systemd/system/getty@tty1.service.d/autologin.conf" <<'EOF'
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin root --noclear %I $TERM
-EOF
-
-    # Explicitly disable sshd in recovery — serial console only.
-    # This prevents network-accessible root shell in the squashfs fallback.
-    mkdir -p "${overlay_upper}/etc/systemd/system"
-    ln -sf /dev/null "${overlay_upper}/etc/systemd/system/sshd.service"
-
-    log "Recovery: serial-console autologin only (sshd masked)"
+# Explicitly disable sshd in recovery to avoid network-accessible root shell.
+mkdir -p "${overlay_upper}/etc/systemd/system"
+ln -sf /dev/null "${overlay_upper}/etc/systemd/system/sshd.service"
+log "Recovery: password login required (sshd masked)"
 
 # Overmount /sysroot with the overlay
 mount -t overlay overlay \

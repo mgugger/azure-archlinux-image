@@ -1,7 +1,7 @@
 [Unit]
 Description=Provision data disk with LUKS2 + vTPM encryption
 Documentation=https://github.com/mgugger/azure-archlinux-image
-ConditionPathExists=/run/arch-root/raw-data-disk
+ConditionPathExists=/etc/arch-root/raw-data-disk
 ConditionPathExists=!/etc/arch-root-provisioned
 After=network-online.target systemd-resolved.service
 Wants=network-online.target
