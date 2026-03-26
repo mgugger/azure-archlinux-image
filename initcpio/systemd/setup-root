@@ -187,7 +187,7 @@ if [[ -f "${var_img}" ]]; then
     var_loop=$(losetup --find --show "${var_img}" 2>/dev/null || true)
     if [[ -n "${var_loop}" ]]; then
         if systemd-cryptsetup attach "${var_mapper}" "${var_loop}" - \
-                tpm2-device=auto,tpm2-pcrs=11 2>/dev/null; then
+                tpm2-device=auto 2>/dev/null; then
             mkdir -p "${var_mnt}"
             if mount -o compress=zstd:6,noatime \
                     "/dev/mapper/${var_mapper}" "${var_mnt}" 2>/dev/null; then

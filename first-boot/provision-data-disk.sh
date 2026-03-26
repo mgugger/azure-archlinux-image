@@ -20,6 +20,9 @@ VAR_MAPPER_NAME="arch_var"
 VAR_CONTAINER_SIZE="768M"
 SECURE_BOOT_PRIVATE_KEY_SECRET_NAME="${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME:-secure-boot-private-key}"
 ROOT_PASSWORD_SECRET_NAME="${ROOT_PASSWORD_SECRET_NAME:-root-login-password}"
+PCR_SIGNING_KEY_DIR="/run/pcr-signing"
+PCR_SIGNING_PUBLIC_KEY_PATH="${PCR_SIGNING_KEY_DIR}/pcr-signing-public-key.pem"
+PCR_SIGNING_PRIVATE_KEY_PATH="${PCR_SIGNING_KEY_DIR}/pcr-signing-private-key.pem"
 
 FULL_INSTALL_PACKAGES=()
 if [[ -r /usr/local/share/arch-image/packages.conf ]]; then
@@ -53,11 +56,11 @@ enroll_tpm2_with_policy() {
     local unlock_key_file="$2"
     local enroll_args=(--tpm2-device=auto --unlock-key-file="$unlock_key_file")
 
-    if secure_boot_enabled; then
-        echo ":: Secure Boot is enabled — enrolling TPM2 key with PCR 7 policy"
-        enroll_args+=(--tpm2-pcrs=7)
+    if [[ "${PCR_SIGNING_AVAILABLE:-0}" -eq 1 ]]; then
+        echo ":: Enrolling TPM2 key with signed PCR 11 policy"
+        enroll_args+=(--tpm2-public-key="${PCR_SIGNING_PUBLIC_KEY_PATH}" --tpm2-public-key-pcrs=11)
     else
-        echo ":: Secure Boot is not enabled — enrolling TPM2 key without PCR policy"
+        echo ":: Enrolling TPM2 key without PCR policy (PCR signing keys not available)"
     fi
 
     systemd-cryptenroll "${enroll_args[@]}" "$luks_dev"
@@ -307,6 +310,20 @@ setup_osdisk_var_encryption() {
 
     echo ":: TPM-encrypted os-disk /var store created and enrolled."
 }
+
+########################################################################
+# Early: generate PCR signing keypair for TPM2 signed PCR 11 policy.
+# Generated fresh on first boot; stored on the encrypted data disk.
+# Key Vault backup is attempted later if available.
+########################################################################
+echo ":: Generating PCR signing keypair for TPM2 enrollment..."
+mkdir -p "${PCR_SIGNING_KEY_DIR}"
+openssl genrsa -out "${PCR_SIGNING_PRIVATE_KEY_PATH}" 2048 2>/dev/null
+openssl rsa -in "${PCR_SIGNING_PRIVATE_KEY_PATH}" -pubout \
+    -out "${PCR_SIGNING_PUBLIC_KEY_PATH}" 2>/dev/null
+chmod 600 "${PCR_SIGNING_PRIVATE_KEY_PATH}"
+PCR_SIGNING_AVAILABLE=1
+echo ":: PCR signing keypair generated — will use signed PCR 11 policy."
 
 ########################################################################
 # Step 0: Ensure encrypted /var/log + /var/cache on OS disk (TPM)
@@ -560,6 +577,27 @@ else
     echo "UKI will not be signed. Set VM tag 'KeyVaultName=<name>' for Secure Boot."
 fi
 
+# PCR signing keys — generated at provisioning time, stored on the encrypted
+# data disk so they survive reboots and are available for kernel updates.
+PCR_SIGNING_ENABLED=0
+if [[ "${PCR_SIGNING_AVAILABLE}" -eq 1 ]]; then
+    install -Dm644 "${PCR_SIGNING_PUBLIC_KEY_PATH}" \
+       "${MOUNT_ROOT}/etc/kernel/pcr-signing-public-key.pem"
+    install -Dm600 "${PCR_SIGNING_PRIVATE_KEY_PATH}" \
+       "${MOUNT_ROOT}/etc/kernel/pcr-signing-private-key.pem"
+    PCR_SIGNING_ENABLED=1
+    echo ":: PCR signing keys installed on data disk root."
+
+    # Back up to Key Vault if available
+    if [[ -n "${KEY_VAULT_NAME}" ]]; then
+        echo ":: Backing up PCR signing keys to Key Vault '${KEY_VAULT_NAME}'..."
+        store_secret_in_keyvault "${KEY_VAULT_NAME}" "pcr-signing-private-key" \
+            "$(cat "${PCR_SIGNING_PRIVATE_KEY_PATH}")" 2>/dev/null || true
+        store_secret_in_keyvault "${KEY_VAULT_NAME}" "pcr-signing-public-key" \
+            "$(cat "${PCR_SIGNING_PUBLIC_KEY_PATH}")" 2>/dev/null || true
+    fi
+fi
+
 # Fetch and apply root password from Key Vault so console access requires auth.
 if [[ -n "${KEY_VAULT_NAME}" ]]; then
     echo ":: Fetching root password from Key Vault '${KEY_VAULT_NAME}'..."
@@ -579,135 +617,63 @@ KEY_VAULT_NAME="${KEY_VAULT_NAME}"
 SECURE_BOOT_PRIVATE_KEY_SECRET_NAME="${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME}"
 ROOT_PASSWORD_SECRET_NAME="${ROOT_PASSWORD_SECRET_NAME}"
 SECURE_BOOT_ENABLED=${SECURE_BOOT_ENABLED}
+PCR_SIGNING_ENABLED=${PCR_SIGNING_ENABLED}
 EOF
 chmod 0600 "${MOUNT_ROOT}/etc/arch-keyvault.conf"
 
-if [[ "${SECURE_BOOT_ENABLED}" -eq 1 ]]; then
-    mkdir -p "${MOUNT_ROOT}/etc/kernel"
-    cat > "${MOUNT_ROOT}/etc/kernel/uki.conf" << 'UKICONF'
-[UKI]
-SecureBootPrivateKey=/etc/kernel/secure-boot-private-key.pem
-SecureBootCertificate=/etc/kernel/secure-boot-certificate.pem
-UKICONF
+# Build uki.conf with available signing capabilities
+mkdir -p "${MOUNT_ROOT}/etc/kernel"
+{
+    echo "[UKI]"
+    if [[ "${SECURE_BOOT_ENABLED}" -eq 1 ]]; then
+        echo "SecureBootPrivateKey=/etc/kernel/secure-boot-private-key.pem"
+        echo "SecureBootCertificate=/etc/kernel/secure-boot-certificate.pem"
+    fi
+    if [[ "${PCR_SIGNING_ENABLED}" -eq 1 ]]; then
+        echo "PCRPKey=/etc/kernel/pcr-signing-public-key.pem"
+        echo ""
+        echo "[PCRSignature:default]"
+        echo "PCRPrivateKey=/etc/kernel/pcr-signing-private-key.pem"
+        echo "PCRPublicKey=/etc/kernel/pcr-signing-public-key.pem"
+        echo "PCRBanks=sha256"
+    fi
+} > "${MOUNT_ROOT}/etc/kernel/uki.conf"
+echo ":: UKI config written (SB=${SECURE_BOOT_ENABLED}, PCR=${PCR_SIGNING_ENABLED})."
 
+# Install secure-boot-resign script — copies the signed UKI to the shim
+# chainload position after mkinitcpio rebuilds it.
+# Keys are already on disk from provisioning; uki.conf drives signing.
 mkdir -p "${MOUNT_ROOT}/usr/local/bin"
-cat > "${MOUNT_ROOT}/usr/local/bin/secure-boot-resign" << EOF
+cat > "${MOUNT_ROOT}/usr/local/bin/secure-boot-resign" << 'RESIGN_EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-export TMPDIR=/var/tmp
+log() { echo "[secure-boot-resign] $*"; }
 
-KEY_PATH="/etc/kernel/secure-boot-private-key.pem"
-CERT_PATH="/etc/kernel/secure-boot-certificate.pem"
-SECRET_NAME="${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME}"
-
-log() { echo "[secure-boot-resign] \$*"; }
-
-fetch_keyvault_name() {
-    if [[ -f /etc/arch-keyvault.conf ]]; then
-        # shellcheck disable=SC1091
-        source /etc/arch-keyvault.conf
-    fi
-
-    if [[ -n "\${KEY_VAULT_NAME:-}" ]]; then
-        echo "\${KEY_VAULT_NAME}"
-        return 0
-    fi
-
-    local compute_json
-    compute_json="\$(curl -fsS -H Metadata:true \
-        "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01")" || return 1
-
-    python -c 'import json,sys; tags=json.loads(sys.stdin.read()).get("tags","");
-for item in tags.split(";"):
-    if not item or ":" not in item:
-        continue
-    k,v=item.split(":",1)
-    if k.strip()=="KeyVaultName":
-        print(v.strip())
-        break' <<<"\${compute_json}"
-}
-
-ensure_private_key() {
-    if [[ -s "\${KEY_PATH}" ]]; then
-        return 0
-    fi
-
-    local kv_name token
-    kv_name="\$(fetch_keyvault_name || true)"
-    if [[ -z "\${kv_name}" ]]; then
-        log "Key is missing and KeyVaultName is not available from /etc/arch-keyvault.conf or VM tags."
-        return 1
-    fi
-
-    token="\$(curl -fsS -H Metadata:true \
-        "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://vault.azure.net" \
-        | python -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
-
-    install -d -m700 /etc/kernel
-    curl -fsS -H "Authorization: Bearer \${token}" \
-        "https://\${kv_name}.vault.azure.net/secrets/\${SECRET_NAME}?api-version=7.4" \
-        | python -c 'import json,sys; print(json.load(sys.stdin)["value"], end="")' \
-        > "\${KEY_PATH}"
-    chmod 600 "\${KEY_PATH}"
-    log "Recovered Secure Boot private key from Key Vault '\${kv_name}'."
-}
-
-ensure_private_key
-
-# Detect chainload mode: shim -> UKI directly (no systemd-boot in the chain)
-if [[ -f /efi/EFI/BOOT/chainload-uki.marker ]]; then
-    # Chainload mode: rebuild UKI and place it as grubx64.efi for shim
-    log "Chainload-UKI mode: rebuilding UKI as grubx64.efi..."
-    mkinitcpio -P
-    if [[ -f /efi/EFI/Linux/arch-linux.efi ]]; then
-        sbsign --key "\${KEY_PATH}" --cert "\${CERT_PATH}" \
-            --output /efi/EFI/BOOT/grubx64.efi \
-            /efi/EFI/Linux/arch-linux.efi
-        log "Signed UKI installed as grubx64.efi."
-    fi
+# mkinitcpio -P already ran (triggered by pacman's 90-mkinitcpio-install.hook).
+# The UKI at /efi/EFI/Linux/arch-linux.efi is already signed via uki.conf.
+# Copy it to grubx64.efi so shim chainloads the updated UKI.
+if [[ -f /efi/EFI/Linux/arch-linux.efi ]]; then
+    cp /efi/EFI/Linux/arch-linux.efi /efi/EFI/BOOT/grubx64.efi
+    log "Updated grubx64.efi with latest signed UKI."
 else
-    # Standard mode: update systemd-boot, optionally swap shim
-    /usr/bin/bootctl update \
-        --certificate "\${CERT_PATH}" \
-        --private-key "\${KEY_PATH}" \
-        --no-pager || true
-
-    if [[ -f /efi/EFI/BOOT/grubx64.efi ]] && [[ -f /usr/share/shim-signed/shimx64.efi ]]; then
-        cp /efi/EFI/BOOT/BOOTX64.EFI /efi/EFI/BOOT/grubx64.efi
-        cp /usr/share/shim-signed/shimx64.efi /efi/EFI/BOOT/BOOTX64.EFI
-        cp /usr/share/shim-signed/mmx64.efi /efi/EFI/BOOT/mmx64.efi
-        log "Shim chain updated."
-    else
-        log "Direct systemd-boot (no shim)."
-    fi
+    log "WARNING: /efi/EFI/Linux/arch-linux.efi not found after mkinitcpio."
 fi
-EOF
+RESIGN_EOF
 chmod 0755 "${MOUNT_ROOT}/usr/local/bin/secure-boot-resign"
 
 mkdir -p "${MOUNT_ROOT}/etc/pacman.d/hooks"
-
-# Detect chainload-UKI mode from the ESP marker left at build time
-if [[ -f "${MOUNT_ROOT}/efi/EFI/BOOT/chainload-uki.marker" ]]; then
-    _HOOK_TARGETS="Target = linux-hardened"
-else
-    _HOOK_TARGETS=$(printf 'Target = systemd\nTarget = systemd-boot\nTarget = linux-hardened')
-fi
-
-cat > "${MOUNT_ROOT}/etc/pacman.d/hooks/90-secure-boot-resign.hook" << EOF
+cat > "${MOUNT_ROOT}/etc/pacman.d/hooks/91-secure-boot-resign.hook" << 'EOF'
 [Trigger]
 Operation = Install
 Operation = Upgrade
 Type = Package
-${_HOOK_TARGETS}
+Target = linux-hardened
 
 [Action]
-Description = Re-sign Secure Boot artifacts after updates
+Description = Copy signed UKI to shim chainload position
 When = PostTransaction
 Exec = /usr/local/bin/secure-boot-resign
 EOF
-else
-    echo ":: Secure Boot disabled — skipping UKI signing config, resign script, and pacman hook."
-fi  # SECURE_BOOT_ENABLED
 
 # mkinitcpio config for data-disk boot
 cat > "${MOUNT_ROOT}/etc/mkinitcpio.conf.d/azure.conf" << 'MKINITCONF'
@@ -730,11 +696,31 @@ CMDLINE
 # Ensure vconsole.conf exists (required by sd-vconsole hook)
 [[ -f "${MOUNT_ROOT}/etc/vconsole.conf" ]] || echo "KEYMAP=us" > "${MOUNT_ROOT}/etc/vconsole.conf"
 
-# Unmount the ESP — we're done reading keys from it.
-# NOTE: We do NOT run mkinitcpio -P here. The squashfs UKI on the ESP
-# handles data-disk boot via setup-root (discovers LUKS, mounts BTRFS).
-# The mkinitcpio config + crypttab above are dormant config for a future
-# switch to direct data-disk UKI boot (e.g. via secure-boot-resign).
+# mkinitcpio preset for UKI output — mkinitcpio -P will generate a signed
+# UKI on the ESP using /etc/kernel/uki.conf for Secure Boot + PCR signing.
+cat > "${MOUNT_ROOT}/etc/mkinitcpio.d/linux-hardened.preset" << 'PRESET'
+ALL_kver="/boot/vmlinuz-linux-hardened"
+ALL_config="/etc/mkinitcpio.conf.d/azure.conf"
+
+PRESETS=('default')
+
+default_uki="/efi/EFI/Linux/arch-linux.efi"
+PRESET
+
+# Build the data-disk UKI. This replaces the squashfs boot UKI on the ESP
+# with one that includes sd-encrypt for LUKS unlock, PCR 11 signatures for
+# TPM2 sealed policy, and Secure Boot signing (if keys are available).
+echo ":: Building data-disk UKI..."
+arch-chroot "${MOUNT_ROOT}" mkinitcpio -P
+
+# In chainload mode, copy the signed UKI to grubx64.efi for shim
+if [[ -f "${MOUNT_ROOT}/efi/EFI/BOOT/chainload-uki.marker" ]] && \
+   [[ -f "${MOUNT_ROOT}/efi/EFI/Linux/arch-linux.efi" ]]; then
+    cp "${MOUNT_ROOT}/efi/EFI/Linux/arch-linux.efi" \
+       "${MOUNT_ROOT}/efi/EFI/BOOT/grubx64.efi"
+    echo ":: Updated grubx64.efi with data-disk UKI."
+fi
+
 umount "${MOUNT_ROOT}/efi"
 
 ########################################################################

@@ -51,7 +51,7 @@ build() {
     # x-initrd.attach: process in initrd.
     # x-systemd.device-timeout=10: give up after 10s if LUKS device absent.
     mkdir -p "$BUILDROOT/etc"
-    echo 'arch_root  LABEL=arch_root_luks  -  tpm2-device=auto,tpm2-pcrs=11,nofail,x-initrd.attach,x-systemd.device-timeout=10' \
+    echo 'arch_root  LABEL=arch_root_luks  -  tpm2-device=auto,nofail,x-initrd.attach,x-systemd.device-timeout=10' \
         > "$BUILDROOT/etc/crypttab"
 
     # systemd initrd: add the service unit and setup script

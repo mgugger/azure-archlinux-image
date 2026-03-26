@@ -325,111 +325,36 @@ arch-chroot "${WORK_DIR}/squashfs-root" systemctl enable provision-data-disk.ser
 arch-chroot "${WORK_DIR}/squashfs-root" systemctl enable azure-report-ready.service
 
 # Install secure-boot resign script and pacman hook into the base image.
+# After a kernel update, mkinitcpio -P rebuilds the UKI (with SB + PCR signatures
+# via uki.conf), then this hook copies it into the shim chainload position.
 install -d -m755 "${WORK_DIR}/squashfs-root/usr/local/bin"
-cat > "${WORK_DIR}/squashfs-root/usr/local/bin/secure-boot-resign" << EOF
+cat > "${WORK_DIR}/squashfs-root/usr/local/bin/secure-boot-resign" << 'RESIGN_EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-export TMPDIR=/var/tmp
+log() { echo "[secure-boot-resign] $*"; }
 
-KEY_PATH="/etc/kernel/secure-boot-private-key.pem"
-CERT_PATH="/etc/kernel/secure-boot-certificate.pem"
-SECRET_NAME="${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME}"
-
-log() { echo "[secure-boot-resign] \$*"; }
-
-fetch_keyvault_name() {
-    if [[ -f /etc/arch-keyvault.conf ]]; then
-        # shellcheck disable=SC1091
-        source /etc/arch-keyvault.conf
-    fi
-
-    if [[ -n "\${KEY_VAULT_NAME:-}" ]]; then
-        echo "\${KEY_VAULT_NAME}"
-        return 0
-    fi
-
-    local compute_json
-    compute_json="\$(curl -fsS -H Metadata:true \
-        "http://169.254.169.254/metadata/instance/compute?api-version=2021-02-01")" || return 1
-
-    python -c 'import json,sys; tags=json.loads(sys.stdin.read()).get("tags","");
-for item in tags.split(";"):
-    if not item or ":" not in item:
-        continue
-    k,v=item.split(":",1)
-    if k.strip()=="KeyVaultName":
-        print(v.strip())
-        break' <<<"\${compute_json}"
-}
-
-ensure_private_key() {
-    if [[ -s "\${KEY_PATH}" ]]; then
-        return 0
-    fi
-
-    local kv_name token
-    kv_name="\$(fetch_keyvault_name || true)"
-    if [[ -z "\${kv_name}" ]]; then
-        log "Key is missing and KeyVaultName is not available from /etc/arch-keyvault.conf or VM tags."
-        return 1
-    fi
-
-    token="\$(curl -fsS -H Metadata:true \
-        "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://vault.azure.net" \
-        | python -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')"
-
-    install -d -m700 /etc/kernel
-    curl -fsS -H "Authorization: Bearer \${token}" \
-        "https://\${kv_name}.vault.azure.net/secrets/\${SECRET_NAME}?api-version=7.4" \
-        | python -c 'import json,sys; print(json.load(sys.stdin)["value"], end="")' \
-        > "\${KEY_PATH}"
-    chmod 600 "\${KEY_PATH}"
-    log "Recovered Secure Boot private key from Key Vault '\${kv_name}'."
-}
-
-ensure_private_key
-
-# Detect chainload mode: shim -> UKI directly (no systemd-boot in the chain)
-if [[ -f /efi/EFI/BOOT/chainload-uki.marker ]]; then
-    # Chainload mode: rebuild UKI and place it as grubx64.efi for shim
-    log "Chainload-UKI mode: rebuilding UKI as grubx64.efi..."
-    mkinitcpio -P
-    if [[ -f /efi/EFI/Linux/arch-linux.efi ]]; then
-        sbsign --key "\${KEY_PATH}" --cert "\${CERT_PATH}" \
-            --output /efi/EFI/BOOT/grubx64.efi \
-            /efi/EFI/Linux/arch-linux.efi
-        log "Signed UKI installed as grubx64.efi."
-    fi
+# mkinitcpio -P already ran (triggered by pacman's 90-mkinitcpio-install.hook).
+# The UKI at /efi/EFI/Linux/arch-linux.efi is already signed via uki.conf.
+# Copy it to grubx64.efi so shim chainloads the updated UKI.
+if [[ -f /efi/EFI/Linux/arch-linux.efi ]]; then
+    cp /efi/EFI/Linux/arch-linux.efi /efi/EFI/BOOT/grubx64.efi
+    log "Updated grubx64.efi with latest signed UKI."
 else
-    # Standard mode: update systemd-boot, optionally swap shim
-    /usr/bin/bootctl update \
-        --certificate "\${CERT_PATH}" \
-        --private-key "\${KEY_PATH}" \
-        --no-pager || true
-
-    if [[ -f /efi/EFI/BOOT/grubx64.efi ]] && [[ -f /usr/share/shim-signed/shimx64.efi ]]; then
-        cp /efi/EFI/BOOT/BOOTX64.EFI /efi/EFI/BOOT/grubx64.efi
-        cp /usr/share/shim-signed/shimx64.efi /efi/EFI/BOOT/BOOTX64.EFI
-        cp /usr/share/shim-signed/mmx64.efi /efi/EFI/BOOT/mmx64.efi
-        log "Shim chain updated."
-    else
-        log "Direct systemd-boot (no shim)."
-    fi
+    log "WARNING: /efi/EFI/Linux/arch-linux.efi not found after mkinitcpio."
 fi
-EOF
+RESIGN_EOF
 chmod 0755 "${WORK_DIR}/squashfs-root/usr/local/bin/secure-boot-resign"
 
 install -d -m755 "${WORK_DIR}/squashfs-root/etc/pacman.d/hooks"
-cat > "${WORK_DIR}/squashfs-root/etc/pacman.d/hooks/90-secure-boot-resign.hook" << EOF
+cat > "${WORK_DIR}/squashfs-root/etc/pacman.d/hooks/91-secure-boot-resign.hook" << 'EOF'
 [Trigger]
 Operation = Install
 Operation = Upgrade
 Type = Package
-$(if [[ "${CHAINLOAD_UKI}" -ne 1 ]]; then echo "Target = systemd"; echo "Target = systemd-boot"; fi)
 Target = linux-hardened
 
 [Action]
-Description = Re-sign Secure Boot artifacts after updates
+Description = Copy signed UKI to shim chainload position
 When = PostTransaction
 Exec = /usr/local/bin/secure-boot-resign
 EOF
