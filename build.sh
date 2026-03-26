@@ -22,21 +22,23 @@ KEY_VAULT_NAME="${KEY_VAULT_NAME:-}"
 SECURE_BOOT_PRIVATE_KEY_SECRET_NAME="${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME:-secure-boot-private-key}"
 SECURE_BOOT_CERTIFICATE_SECRET_NAME="${SECURE_BOOT_CERTIFICATE_SECRET_NAME:-secure-boot-certificate}"
 ROOT_PASSWORD_SECRET_NAME="${ROOT_PASSWORD_SECRET_NAME:-root-login-password}"
+PCR_SIGNING_PRIVATE_KEY_SECRET_NAME="${PCR_SIGNING_PRIVATE_KEY_SECRET_NAME:-pcr-signing-private-key}"
+PCR_SIGNING_PUBLIC_KEY_SECRET_NAME="${PCR_SIGNING_PUBLIC_KEY_SECRET_NAME:-pcr-signing-public-key}"
 
 SECURE_BOOT_PRIVATE_KEY_PATH="${WORK_DIR}/secure-boot-private-key.pem"
 SECURE_BOOT_CERTIFICATE_PATH="${WORK_DIR}/secure-boot-certificate.pem"
+PCR_SIGNING_PRIVATE_KEY_PATH="${WORK_DIR}/pcr-signing-private-key.pem"
+PCR_SIGNING_PUBLIC_KEY_PATH="${WORK_DIR}/pcr-signing-public-key.pem"
 
 # Set USE_SHIM=0 to skip shim and boot the signed UKI or systemd-boot directly.
 # Default is on: shim provides MOK-based Secure Boot trust, and with CHAINLOAD_UKI=1
 # it chainloads the UKI directly — no systemd-boot NVRAM overhead.
 USE_SHIM="${USE_SHIM:-1}"
 
-# Set CHAINLOAD_UKI=0 to keep systemd-boot in the shim chain (shim -> sd-boot -> UKI).
-# Default is on: shim chainloads the UKI directly as grubx64.efi, bypassing
-# systemd-boot entirely. This eliminates the Loader* NVRAM variables that
-# systemd-boot writes on every boot — important on Azure Hyper-V where UEFI
-# NVRAM is limited to ~32 KB.
-CHAINLOAD_UKI="${CHAINLOAD_UKI:-1}"
+# Shim mode always chainloads the UKI directly as grubx64.efi.
+# systemd-boot is intentionally not in the boot chain to avoid Loader* NVRAM
+# writes on Azure Hyper-V and to keep first-stage boot deterministic.
+CHAINLOAD_UKI="1"
 
 # Source package lists
 # shellcheck disable=SC1090
@@ -45,6 +47,42 @@ source "${SQUASHFS_PACKAGES}"
 generate_password_64() {
     # Base64 output is trimmed to 64 chars for a fixed-length high-entropy password.
     openssl rand -base64 96 | tr -d '\n' | head -c 64
+}
+
+secure_boot_keypair_matches() {
+    local key_path="$1"
+    local cert_path="$2"
+
+    [[ -s "$key_path" && -s "$cert_path" ]] || return 1
+
+    local key_pub_sha cert_pub_sha
+    key_pub_sha="$(openssl pkey -in "$key_path" -pubout 2>/dev/null | sha256sum | awk '{print $1}')" || return 1
+    cert_pub_sha="$(openssl x509 -in "$cert_path" -pubkey -noout 2>/dev/null | sha256sum | awk '{print $1}')" || return 1
+
+    [[ "$key_pub_sha" == "$cert_pub_sha" ]]
+}
+
+verify_secure_boot_signature() {
+    local artifact_path="$1"
+    local cert_path="$2"
+
+    if ! sbverify --cert "$cert_path" "$artifact_path" >/dev/null 2>&1; then
+        echo "Error: Secure Boot verification failed for ${artifact_path}" >&2
+        return 1
+    fi
+}
+
+pcr_keypair_matches() {
+    local private_key_path="$1"
+    local public_key_path="$2"
+
+    [[ -s "$private_key_path" && -s "$public_key_path" ]] || return 1
+
+    local private_pub_sha public_sha
+    private_pub_sha="$(openssl pkey -in "$private_key_path" -pubout 2>/dev/null | sha256sum | awk '{print $1}')" || return 1
+    public_sha="$(openssl pkey -pubin -in "$public_key_path" -pubout 2>/dev/null | sha256sum | awk '{print $1}')" || return 1
+
+    [[ "$private_pub_sha" == "$public_sha" ]]
 }
 
 # Ensure IgnorePkg is placed under [options], not appended at EOF.
@@ -193,7 +231,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 for cmd in pacstrap mksquashfs mkfs.btrfs mkfs.vfat losetup sfdisk \
-           mkinitcpio ukify qemu-img az openssl sbsign; do
+           mkinitcpio ukify qemu-img az openssl sbsign sbverify sha256sum; do
     if ! command -v "$cmd" &>/dev/null; then
         echo "Error: Required command '$cmd' not found" >&2
         exit 1
@@ -641,7 +679,15 @@ if [[ -n "${EXISTING_PRIVATE_KEY}" && -n "${EXISTING_CERTIFICATE}" ]]; then
     echo ":: Reusing existing Secure Boot keypair from Key Vault."
     printf '%s\n' "${EXISTING_PRIVATE_KEY}" > "${SECURE_BOOT_PRIVATE_KEY_PATH}"
     printf '%s\n' "${EXISTING_CERTIFICATE}" > "${SECURE_BOOT_CERTIFICATE_PATH}"
-else
+
+    if ! secure_boot_keypair_matches "${SECURE_BOOT_PRIVATE_KEY_PATH}" "${SECURE_BOOT_CERTIFICATE_PATH}"; then
+        echo ":: Existing Secure Boot key/certificate do not match — regenerating keypair."
+        EXISTING_PRIVATE_KEY=""
+        EXISTING_CERTIFICATE=""
+    fi
+fi
+
+if [[ -z "${EXISTING_PRIVATE_KEY}" || -z "${EXISTING_CERTIFICATE}" ]]; then
     if [[ -n "${EXISTING_PRIVATE_KEY}" && -z "${EXISTING_CERTIFICATE}" ]]; then
         echo ":: Private key found without matching certificate — regenerating keypair."
     else
@@ -652,6 +698,11 @@ else
         -subj "/CN=ArchLinux Azure Secure Boot/" \
         -keyout "${SECURE_BOOT_PRIVATE_KEY_PATH}" \
         -out "${SECURE_BOOT_CERTIFICATE_PATH}"
+
+    if ! secure_boot_keypair_matches "${SECURE_BOOT_PRIVATE_KEY_PATH}" "${SECURE_BOOT_CERTIFICATE_PATH}"; then
+        echo "Error: generated Secure Boot keypair failed consistency check" >&2
+        exit 1
+    fi
 
     echo ":: Uploading Secure Boot private key to Azure Key Vault '${KEY_VAULT_NAME}'..."
     az keyvault secret set \
@@ -681,6 +732,76 @@ if [[ -z "${EXISTING_ROOT_PASSWORD}" ]]; then
         >/dev/null
 fi
 
+EXISTING_PCR_PRIVATE_KEY=""
+EXISTING_PCR_PUBLIC_KEY=""
+
+if az keyvault secret show \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${PCR_SIGNING_PRIVATE_KEY_SECRET_NAME}" \
+        --only-show-errors >/dev/null 2>&1; then
+    EXISTING_PCR_PRIVATE_KEY="$(az keyvault secret show \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${PCR_SIGNING_PRIVATE_KEY_SECRET_NAME}" \
+        --query value -o tsv --only-show-errors)"
+fi
+
+if az keyvault secret show \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${PCR_SIGNING_PUBLIC_KEY_SECRET_NAME}" \
+        --only-show-errors >/dev/null 2>&1; then
+    EXISTING_PCR_PUBLIC_KEY="$(az keyvault secret show \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${PCR_SIGNING_PUBLIC_KEY_SECRET_NAME}" \
+        --query value -o tsv --only-show-errors)"
+fi
+
+if [[ -n "${EXISTING_PCR_PRIVATE_KEY}" && -n "${EXISTING_PCR_PUBLIC_KEY}" ]]; then
+    echo ":: Reusing existing PCR signing keypair from Key Vault."
+    printf '%s\n' "${EXISTING_PCR_PRIVATE_KEY}" > "${PCR_SIGNING_PRIVATE_KEY_PATH}"
+    printf '%s\n' "${EXISTING_PCR_PUBLIC_KEY}" > "${PCR_SIGNING_PUBLIC_KEY_PATH}"
+
+    if ! pcr_keypair_matches "${PCR_SIGNING_PRIVATE_KEY_PATH}" "${PCR_SIGNING_PUBLIC_KEY_PATH}"; then
+        echo ":: Existing PCR signing keys do not match — regenerating keypair."
+        EXISTING_PCR_PRIVATE_KEY=""
+        EXISTING_PCR_PUBLIC_KEY=""
+    fi
+fi
+
+if [[ -z "${EXISTING_PCR_PRIVATE_KEY}" || -z "${EXISTING_PCR_PUBLIC_KEY}" ]]; then
+    if [[ -n "${EXISTING_PCR_PRIVATE_KEY}" || -n "${EXISTING_PCR_PUBLIC_KEY}" ]]; then
+        echo ":: Partial PCR signing keypair found — regenerating keypair."
+    else
+        echo ":: No existing PCR signing keypair found — generating new keypair."
+    fi
+
+    openssl genrsa -out "${PCR_SIGNING_PRIVATE_KEY_PATH}" 2048 >/dev/null 2>&1
+    openssl rsa -in "${PCR_SIGNING_PRIVATE_KEY_PATH}" -pubout \
+        -out "${PCR_SIGNING_PUBLIC_KEY_PATH}" >/dev/null 2>&1
+
+    if ! pcr_keypair_matches "${PCR_SIGNING_PRIVATE_KEY_PATH}" "${PCR_SIGNING_PUBLIC_KEY_PATH}"; then
+        echo "Error: generated PCR signing keypair failed consistency check" >&2
+        exit 1
+    fi
+
+    echo ":: Uploading PCR signing private key to Azure Key Vault '${KEY_VAULT_NAME}'..."
+    az keyvault secret set \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${PCR_SIGNING_PRIVATE_KEY_SECRET_NAME}" \
+        --file "${PCR_SIGNING_PRIVATE_KEY_PATH}" \
+        --only-show-errors \
+        >/dev/null
+
+    echo ":: Uploading PCR signing public key to Azure Key Vault '${KEY_VAULT_NAME}'..."
+    az keyvault secret set \
+        --vault-name "${KEY_VAULT_NAME}" \
+        --name "${PCR_SIGNING_PUBLIC_KEY_SECRET_NAME}" \
+        --file "${PCR_SIGNING_PUBLIC_KEY_PATH}" \
+        --only-show-errors \
+        >/dev/null
+fi
+
+chmod 600 "${PCR_SIGNING_PRIVATE_KEY_PATH}"
+
 # Build UKI
 mkdir -p "${WORK_DIR}/mnt/efi/EFI/Linux"
 ukify build \
@@ -688,6 +809,10 @@ ukify build \
     --initrd="${WORK_DIR}/squashfs-root/boot/initramfs-azure.img" \
     --cmdline="@${WORK_DIR}/cmdline.txt" \
     --os-release="@${WORK_DIR}/squashfs-root/usr/lib/os-release" \
+    --pcrpkey="${PCR_SIGNING_PUBLIC_KEY_PATH}" \
+    --pcr-private-key="${PCR_SIGNING_PRIVATE_KEY_PATH}" \
+    --pcr-public-key="${PCR_SIGNING_PUBLIC_KEY_PATH}" \
+    --pcr-banks=sha256 \
     --output="${WORK_DIR}/mnt/efi/EFI/Linux/arch-linux.efi"
 
 echo ":: Signing UKI with Secure Boot key..."
@@ -696,56 +821,40 @@ sbsign \
     --cert "${SECURE_BOOT_CERTIFICATE_PATH}" \
     --output "${WORK_DIR}/mnt/efi/EFI/Linux/arch-linux.efi" \
     "${WORK_DIR}/mnt/efi/EFI/Linux/arch-linux.efi"
+verify_secure_boot_signature "${WORK_DIR}/mnt/efi/EFI/Linux/arch-linux.efi" "${SECURE_BOOT_CERTIFICATE_PATH}"
 
 mkdir -p "${WORK_DIR}/mnt/efi/EFI/BOOT"
 
-if [[ "${USE_SHIM}" -eq 1 ]] && [[ "${CHAINLOAD_UKI}" -eq 1 ]] && \
-   [[ -f "${WORK_DIR}/squashfs-root/usr/share/shim-signed/shimx64.efi" ]]; then
-    # Chainload mode: shim (BOOTX64.EFI) -> signed UKI (grubx64.efi), no systemd-boot
+if [[ "${USE_SHIM}" -eq 1 ]]; then
+    if [[ ! -f "${WORK_DIR}/squashfs-root/usr/share/shim-signed/shimx64.efi" ]]; then
+        echo "Error: USE_SHIM=1 but shim-signed artifacts are missing" >&2
+        exit 1
+    fi
+
+    # Shim chainload mode: BOOTX64.EFI (shim) -> grubx64.efi (signed UKI)
     cp "${WORK_DIR}/squashfs-root/usr/share/shim-signed/shimx64.efi" \
         "${WORK_DIR}/mnt/efi/EFI/BOOT/BOOTX64.EFI"
     cp "${WORK_DIR}/squashfs-root/usr/share/shim-signed/mmx64.efi" \
         "${WORK_DIR}/mnt/efi/EFI/BOOT/mmx64.efi"
     cp "${WORK_DIR}/mnt/efi/EFI/Linux/arch-linux.efi" \
         "${WORK_DIR}/mnt/efi/EFI/BOOT/grubx64.efi"
-    # Marker so the resign script knows to update grubx64.efi instead of bootctl
+    verify_secure_boot_signature "${WORK_DIR}/mnt/efi/EFI/BOOT/grubx64.efi" "${SECURE_BOOT_CERTIFICATE_PATH}"
+    # Marker so the resign script knows to refresh grubx64.efi after kernel updates.
     touch "${WORK_DIR}/mnt/efi/EFI/BOOT/chainload-uki.marker"
     echo ":: Shim chainload-UKI: BOOTX64.EFI (shim) -> grubx64.efi (signed UKI)"
 else
-    # systemd-boot loader config (only needed when sd-boot is in the chain)
-    mkdir -p "${WORK_DIR}/mnt/efi/loader"
-    cat > "${WORK_DIR}/mnt/efi/loader/loader.conf" << 'EOF'
-default arch-linux.efi
-timeout 5
-console-mode max
-editor no
-EOF
-
-    # Install systemd-boot as the default bootloader (BOOTX64.EFI)
-    sbsign \
-        --key "${SECURE_BOOT_PRIVATE_KEY_PATH}" \
-        --cert "${SECURE_BOOT_CERTIFICATE_PATH}" \
-        --output "${WORK_DIR}/mnt/efi/EFI/BOOT/BOOTX64.EFI" \
-        "${WORK_DIR}/squashfs-root/usr/lib/systemd/boot/efi/systemd-bootx64.efi"
-
-    if [[ "${USE_SHIM}" -eq 1 ]] && [[ -f "${WORK_DIR}/squashfs-root/usr/share/shim-signed/shimx64.efi" ]]; then
-        # Shim + systemd-boot mode
-        mv "${WORK_DIR}/mnt/efi/EFI/BOOT/BOOTX64.EFI" \
-            "${WORK_DIR}/mnt/efi/EFI/BOOT/grubx64.efi"
-        cp "${WORK_DIR}/squashfs-root/usr/share/shim-signed/shimx64.efi" \
-            "${WORK_DIR}/mnt/efi/EFI/BOOT/BOOTX64.EFI"
-        cp "${WORK_DIR}/squashfs-root/usr/share/shim-signed/mmx64.efi" \
-            "${WORK_DIR}/mnt/efi/EFI/BOOT/mmx64.efi"
-        echo ":: Shim chain: BOOTX64.EFI (shim) -> grubx64.efi (signed systemd-boot)"
-    else
-        echo ":: Direct boot: BOOTX64.EFI (signed systemd-boot), no shim."
-    fi
+    # No-shim mode: boot the signed UKI directly.
+    cp "${WORK_DIR}/mnt/efi/EFI/Linux/arch-linux.efi" \
+        "${WORK_DIR}/mnt/efi/EFI/BOOT/BOOTX64.EFI"
+    verify_secure_boot_signature "${WORK_DIR}/mnt/efi/EFI/BOOT/BOOTX64.EFI" "${SECURE_BOOT_CERTIFICATE_PATH}"
+    echo ":: Direct UKI boot: BOOTX64.EFI (signed UKI), no shim."
 fi
 
 # Public certificate on ESP (PEM + DER for MOK enrollment / Secure Boot).
 # Only the private key is kept exclusively in Key Vault.
 mkdir -p "${WORK_DIR}/mnt/efi/keys"
 cp "${SECURE_BOOT_CERTIFICATE_PATH}" "${WORK_DIR}/mnt/efi/keys/secure-boot-certificate.pem"
+cp "${PCR_SIGNING_PUBLIC_KEY_PATH}" "${WORK_DIR}/mnt/efi/keys/pcr-signing-public-key.pem"
 openssl x509 -in "${SECURE_BOOT_CERTIFICATE_PATH}" -outform DER \
     -out "${WORK_DIR}/mnt/efi/mok-manager.crt"
 
@@ -760,6 +869,13 @@ if [[ -f "${SECURE_BOOT_PRIVATE_KEY_PATH}" ]]; then
         shred -u "${SECURE_BOOT_PRIVATE_KEY_PATH}"
     else
         rm -f "${SECURE_BOOT_PRIVATE_KEY_PATH}"
+    fi
+fi
+if [[ -f "${PCR_SIGNING_PRIVATE_KEY_PATH}" ]]; then
+    if command -v shred &>/dev/null; then
+        shred -u "${PCR_SIGNING_PRIVATE_KEY_PATH}"
+    else
+        rm -f "${PCR_SIGNING_PRIVATE_KEY_PATH}"
     fi
 fi
 

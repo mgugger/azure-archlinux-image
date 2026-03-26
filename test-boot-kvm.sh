@@ -12,6 +12,7 @@
 #   --no-reboot              Exit on reboot instead of allowing the VM to restart (old default)
 #
 # This script enforces Secure Boot capable OVMF firmware for local parity tests.
+# All test runs are ephemeral: guest writes are discarded on exit.
 #
 # The default mode allows reboots so the full provisioning cycle can be tested:
 #   1st boot: squashfs → provision data disk → reboot
@@ -27,6 +28,7 @@ USE_TPM=0
 CLOUD_INIT=0
 NO_REBOOT=0
 OVMF_VARS_RW=""
+OVMF_VARS_RUNTIME=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -118,15 +120,20 @@ if [[ ! -f "$OVMF_VARS" ]]; then
     exit 1
 fi
 
-# Prepare writable OVMF variables store so firmware PCR measurements stay stable
+# Prepare OVMF vars seed path (persistent file managed by user/workspace).
 OVMF_VARS_RW="${OVMF_VARS_RW:-out/ovmf-vars-secboot-ms.fd}"
 mkdir -p "$(dirname "$OVMF_VARS_RW")"
 if [[ ! -f "$OVMF_VARS_RW" ]]; then
     cp "$OVMF_VARS" "$OVMF_VARS_RW"
-    echo ":: Initialized writable OVMF vars at ${OVMF_VARS_RW}"
+    echo ":: Initialized OVMF vars seed at ${OVMF_VARS_RW}"
 else
-    echo ":: Reusing writable OVMF vars at ${OVMF_VARS_RW}"
+    echo ":: Reusing OVMF vars seed at ${OVMF_VARS_RW}"
 fi
+
+# Runtime vars are always ephemeral so tests cannot leak firmware state between runs.
+OVMF_VARS_RUNTIME=$(mktemp /tmp/ovmf-vars-runtime-XXXXXX.fd)
+cp "$OVMF_VARS_RW" "$OVMF_VARS_RUNTIME"
+echo ":: Using ephemeral runtime OVMF vars: ${OVMF_VARS_RUNTIME}"
 
 DATA_DISK_IMG=""
 SWTPM_PID=""
@@ -142,6 +149,8 @@ cleanup() {
         && echo ":: Removed temporary data disk: ${DATA_DISK_IMG}"
     [[ -n "$CIDATA_ISO" ]]    && rm -f "$CIDATA_ISO" \
         && echo ":: Removed cloud-init seed ISO: ${CIDATA_ISO}"
+    [[ -n "$OVMF_VARS_RUNTIME" ]] && rm -f "$OVMF_VARS_RUNTIME" \
+        && echo ":: Removed ephemeral OVMF vars: ${OVMF_VARS_RUNTIME}"
 }
 trap cleanup EXIT
 
@@ -211,9 +220,127 @@ users:
     lock_passwd: false
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
+write_files:
+  - path: /usr/local/bin/cloud-init-kvm-verify.sh
+    owner: root:root
+    permissions: '0755'
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      LOG=/var/log/cloud-init-kvm-verify.log
+      exec > >(tee -a "$LOG") 2>&1
+
+      source_device() {
+          local mnt="$1" src
+          src=$(findmnt -no SOURCE "$mnt")
+          # Btrfs mounts may include subvolume suffix: /dev/mapper/foo[/@subvol]
+          echo "${src%%[*}"
+      }
+
+      verify_signed_with_cert() {
+          local cert="$1"
+          local efi="$2"
+          local out
+
+          if out=$(sbverify --cert "$cert" "$efi" 2>&1); then
+              return 0
+          fi
+
+          echo "ERROR: sbverify failed for ${efi}"
+          echo "$out"
+
+          if echo "$out" | grep -qi 'No signature table present'; then
+              echo "ERROR: ${efi} is unsigned (no PE/COFF signature table)."
+              if [[ -f /etc/arch-keyvault.conf ]]; then
+                  echo ":: /etc/arch-keyvault.conf:"
+                  grep -E 'KEY_VAULT_NAME|SECURE_BOOT_ENABLED|PCR_SIGNING_ENABLED' /etc/arch-keyvault.conf || true
+              fi
+              if [[ -f /etc/kernel/uki.conf ]]; then
+                  echo ":: /etc/kernel/uki.conf Secure Boot lines:"
+                  grep -E 'SecureBootPrivateKey|SecureBootCertificate' /etc/kernel/uki.conf || true
+              fi
+              echo "Hint: provisioning keeps the prebuilt UKI; unsigned artifacts usually indicate a build/signing pipeline issue, not first-boot provisioning."
+          fi
+
+          return 1
+      }
+
+      ESP_MOUNTED_BY_SCRIPT=0
+      cleanup() {
+          if [[ "$ESP_MOUNTED_BY_SCRIPT" -eq 1 ]]; then
+              umount /efi || true
+          fi
+      }
+      trap cleanup EXIT
+
+      # Provisioned root may not auto-mount /efi. Mount ESP read-only for checks.
+      if ! findmnt -M /efi >/dev/null 2>&1; then
+          mkdir -p /efi
+          if mount -o ro LABEL=ESP /efi; then
+              ESP_MOUNTED_BY_SCRIPT=1
+          else
+              echo "ERROR: failed to mount ESP at /efi for Secure Boot checks"
+              exit 1
+          fi
+      fi
+
+      # Canonical provisioning/runtime paths.
+      CERT_PEM=/etc/kernel/secure-boot-certificate.pem
+      CERT_DER=/efi/mok-manager.crt
+      UKI_BOOT=/efi/EFI/BOOT/grubx64.efi
+      UKI_LINUX=/efi/EFI/Linux/arch-linux.efi
+
+      echo ":: KVM cloud-init verification starting"
+
+      for req in sbverify openssl findmnt; do
+          if ! command -v "$req" >/dev/null 2>&1; then
+              echo "ERROR: required command missing: $req"
+              exit 1
+          fi
+      done
+
+      for f in "$CERT_PEM" "$CERT_DER" "$UKI_BOOT" "$UKI_LINUX"; do
+          if [[ ! -f "$f" ]]; then
+              echo "ERROR: required file missing: $f"
+              exit 1
+          fi
+      done
+
+      echo ":: Using CERT_PEM=$CERT_PEM"
+      echo ":: Using CERT_DER=$CERT_DER"
+      echo ":: Using UKI_BOOT=$UKI_BOOT"
+      echo ":: Using UKI_LINUX=$UKI_LINUX"
+
+      pem_fp=$(openssl x509 -in "$CERT_PEM" -noout -fingerprint -sha256 | cut -d= -f2)
+      der_fp=$(openssl x509 -in "$CERT_DER" -inform DER -noout -fingerprint -sha256 | cut -d= -f2)
+      if [[ "$pem_fp" != "$der_fp" ]]; then
+          echo "ERROR: ESP certificate mismatch between $CERT_PEM and $CERT_DER"
+          exit 1
+      fi
+
+            verify_signed_with_cert "$CERT_PEM" "$UKI_BOOT"
+            verify_signed_with_cert "$CERT_PEM" "$UKI_LINUX"
+
+            root_src=$(source_device /)
+            cache_src=$(source_device /var/cache)
+            log_src=$(source_device /var/log)
+
+      if [[ "$cache_src" != "$root_src" ]]; then
+          echo "ERROR: /var/cache is not on OS root source (root=$root_src cache=$cache_src)"
+          exit 1
+      fi
+
+      if [[ "$log_src" != "$root_src" ]]; then
+          echo "ERROR: /var/log is not on OS root source (root=$root_src log=$log_src)"
+          exit 1
+      fi
+
+      echo ":: Verification successful"
 runcmd:
-  - [sh, -c, 'echo cloud-init-runcmd-success > /var/log/cloud-init-test.log']
-  - [systemctl, poweroff]
+    - [bash, -c, '/usr/local/bin/cloud-init-kvm-verify.sh']
+    - [sh, -c, 'echo cloud-init-runcmd-success > /var/log/cloud-init-test.log']
+    - [systemctl, poweroff]
 USERDATA
 
     if [[ "$MKISO" == "genisoimage" ]]; then
@@ -240,6 +367,7 @@ fi
 echo ":: Booting ${VHD} with QEMU/KVM (UEFI)..."
 echo ":: Secure Boot firmware: ${OVMF_CODE}"
 echo ":: Vars template source: ${OVMF_VARS}"
+echo ":: Ephemeral mode: enabled (QEMU -snapshot + runtime OVMF vars copy)"
 echo ":: Console on serial — press Ctrl-A X to quit"
 if [[ "$NO_REBOOT" -eq 0 ]]; then
     echo ":: Reboots allowed — VM will restart after provisioning"
@@ -252,8 +380,9 @@ qemu-system-x86_64 \
     -m 2048 \
     -cpu host \
     -smp 2 \
+    -snapshot \
     -drive if=pflash,format=raw,readonly=on,file="${OVMF_CODE}" \
-    -drive if=pflash,format=raw,file="${OVMF_VARS_RW}" \
+    -drive if=pflash,format=raw,file="${OVMF_VARS_RUNTIME}" \
     -drive file="${VHD}",format=vpc,if=virtio \
     ${DATA_DISK_ARGS[@]+"${DATA_DISK_ARGS[@]}"} \
     ${CIDATA_ARGS[@]+"${CIDATA_ARGS[@]}"} \
