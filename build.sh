@@ -383,6 +383,51 @@ fi
 RESIGN_EOF
 chmod 0755 "${WORK_DIR}/squashfs-root/usr/local/bin/secure-boot-resign"
 
+# TPM2 re-enrollment script — after a kernel/initrd update the UKI changes,
+# so PCR 11 values will differ on next boot. Re-enroll before reboot.
+cat > "${WORK_DIR}/squashfs-root/usr/local/bin/reenroll-tpm-all.sh" << 'TPMEOF'
+#!/usr/bin/env bash
+set -euo pipefail
+log() { echo "[reenroll-tpm-all] $*"; }
+
+PCR_PUB_KEY="/etc/kernel/pcr-signing-public-key.pem"
+
+luks_devs=$(blkid -c /dev/null -t TYPE=crypto_LUKS -o device 2>/dev/null || true)
+if [[ -z "${luks_devs}" ]]; then
+    log "No LUKS devices found."
+    exit 0
+fi
+
+for dev in ${luks_devs}; do
+    if ! cryptsetup isLuks --type luks2 "$dev" 2>/dev/null; then
+        log "Skipping non-LUKS2 device: $dev"
+        continue
+    fi
+
+    dump=$(cryptsetup luksDump "$dev" 2>/dev/null || true)
+    if ! grep -qiE 'tpm2|systemd-tpm2' <<< "$dump"; then
+        log "No TPM2 token found on $dev; skipping."
+        continue
+    fi
+
+    log "Re-enrolling TPM2 on $dev..."
+    enroll_args=(--wipe-slot=tpm2 --unlock-tpm2-device=auto --tpm2-device=auto)
+    if [[ -f "${PCR_PUB_KEY}" ]]; then
+        enroll_args+=(--tpm2-public-key="${PCR_PUB_KEY}" --tpm2-public-key-pcrs=11)
+        log "Using signed PCR 11 policy."
+    else
+        log "No PCR signing key found; enrolling without PCR policy."
+    fi
+
+    if systemd-cryptenroll "${enroll_args[@]}" "$dev"; then
+        log "TPM2 re-enrolled on $dev."
+    else
+        log "WARNING: TPM2 re-enroll failed on $dev."
+    fi
+done
+TPMEOF
+chmod 0755 "${WORK_DIR}/squashfs-root/usr/local/bin/reenroll-tpm-all.sh"
+
 install -d -m755 "${WORK_DIR}/squashfs-root/etc/pacman.d/hooks"
 cat > "${WORK_DIR}/squashfs-root/etc/pacman.d/hooks/91-secure-boot-resign.hook" << 'EOF'
 [Trigger]
@@ -395,6 +440,21 @@ Target = linux-hardened
 Description = Copy signed UKI to shim chainload position
 When = PostTransaction
 Exec = /usr/local/bin/secure-boot-resign
+EOF
+
+cat > "${WORK_DIR}/squashfs-root/etc/pacman.d/hooks/95-tpm2-reenroll.hook" << 'EOF'
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = linux-hardened
+Target = mkinitcpio
+Target = systemd
+
+[Action]
+Description = Re-enroll TPM2 key for all LUKS2 devices
+When = PostTransaction
+Exec = /usr/local/bin/reenroll-tpm-all.sh
 EOF
 
 # Build and install shim-signed from AUR (needed for Secure Boot chain)
@@ -433,6 +493,54 @@ echo ":: shim-signed installed."
 else
     echo ":: Skipping shim-signed build (USE_SHIM=0)."
 fi
+
+# Override mkinitcpio.conf with Azure/Hyper-V config — must be before mksquashfs
+# so it is included in the squashfs and carried to the data disk on provisioning.
+cat > "${WORK_DIR}/squashfs-root/etc/mkinitcpio.conf" << 'MKINITCONF'
+# Azure/Hyper-V drivers, squashfs overlay stack, LUKS + BTRFS for data disk,
+# virtio/NVMe for alternative VM types.  Explicit list avoids pulling in
+# the entire block subsystem (parport, pcmcia, InfiniBand, etc.) which
+# linux-hardened does not build.
+MODULES=(hv_vmbus hv_storvsc hv_netvsc hv_utils
+         squashfs overlay loop
+         dm-crypt btrfs vfat
+         virtio_blk virtio_scsi virtio_pci nvme)
+HOOKS=(systemd modconf sd-encrypt squashfs-overlay)
+COMPRESSION="zstd"
+MKINITCONF
+
+# Kernel cmdline for UKI builds — uses labels for portability (no UUIDs baked in)
+mkdir -p "${WORK_DIR}/squashfs-root/etc/kernel"
+cat > "${WORK_DIR}/squashfs-root/etc/kernel/cmdline" << 'CMDLINE'
+root=LABEL=archboot rootflags=compress=zstd:6 rw
+console=tty0 console=ttyS0,115200 bgrt_disable
+lsm=landlock,lockdown,yama,integrity,apparmor,bpf
+slab_nomerge init_on_alloc=1 init_on_free=1
+page_alloc.shuffle=1 pti=on randomize_kstack_offset=on
+vsyscall=none debugfs=off oops=panic
+intel_iommu=on amd_iommu=on
+arch_boot=squashfs
+CMDLINE
+
+# Override linux-hardened preset so mkinitcpio -P produces a signed UKI
+# instead of a raw initramfs.  The UKI lands on the ESP at
+# /efi/EFI/Linux/arch-linux.efi and is signed via /etc/kernel/uki.conf.
+cat > "${WORK_DIR}/squashfs-root/etc/mkinitcpio.d/linux-hardened.preset" << 'PRESET'
+ALL_kver="/boot/vmlinuz-linux-hardened"
+
+PRESETS=('default')
+
+default_uki="/efi/EFI/Linux/arch-linux.efi"
+PRESET
+
+# Install custom mkinitcpio hooks into squashfs-root before compression
+# so they are carried to the data disk on provisioning.
+install -Dm644 initcpio/install/squashfs-overlay \
+    "${WORK_DIR}/squashfs-root/usr/lib/initcpio/install/squashfs-overlay"
+install -Dm644 initcpio/systemd/arch-root-setup.service \
+    "${WORK_DIR}/squashfs-root/usr/lib/systemd/system/arch-root-setup.service"
+install -Dm755 initcpio/systemd/setup-root \
+    "${WORK_DIR}/squashfs-root/usr/lib/arch-root/setup-root"
 
 # Trim squashfs-root before compression
 echo ":: Trimming squashfs-root..."
@@ -596,16 +704,6 @@ echo ":: Kernel version: ${KVER}"
 cp -a "${WORK_DIR}/squashfs-root/lib/modules/${KVER}" \
     "${WORK_DIR}/mnt/lib/modules/${KVER}" 2>/dev/null || true
 
-# Install our custom mkinitcpio hooks into the squashfs-root for building
-install -Dm644 initcpio/install/squashfs-overlay \
-    "${WORK_DIR}/squashfs-root/usr/lib/initcpio/install/squashfs-overlay"
-
-# Install systemd initrd service and setup script (used instead of run_hook)
-install -Dm644 initcpio/systemd/arch-root-setup.service \
-    "${WORK_DIR}/squashfs-root/usr/lib/systemd/system/arch-root-setup.service"
-install -Dm755 initcpio/systemd/setup-root \
-    "${WORK_DIR}/squashfs-root/usr/lib/arch-root/setup-root"
-
 # Some systemd hook versions expect this path under /usr/lib/systemd.
 # Ensure it exists in the chroot when only /usr/bin contains the binary.
 if [[ ! -e "${WORK_DIR}/squashfs-root/usr/lib/systemd/systemd-tty-ask-password-agent" \
@@ -615,37 +713,13 @@ if [[ ! -e "${WORK_DIR}/squashfs-root/usr/lib/systemd/systemd-tty-ask-password-a
         "${WORK_DIR}/squashfs-root/usr/lib/systemd/systemd-tty-ask-password-agent"
 fi
 
-# Create mkinitcpio preset for the boot image
-cat > "${WORK_DIR}/squashfs-root/etc/mkinitcpio.conf.d/azure-boot.conf" << 'MKINITCONF'
-# Azure/Hyper-V drivers, squashfs overlay stack, LUKS + BTRFS for data disk,
-# virtio/NVMe for alternative VM types.  Explicit list avoids pulling in
-# the entire block subsystem (parport, pcmcia, InfiniBand, etc.) which
-# linux-hardened does not build.
-MODULES=(hv_vmbus hv_storvsc hv_netvsc hv_utils
-         squashfs overlay loop
-         dm-crypt btrfs vfat
-         virtio_blk virtio_scsi virtio_pci nvme)
-HOOKS=(systemd modconf sd-encrypt squashfs-overlay)
-COMPRESSION="zstd"
-MKINITCONF
-
-# Generate initramfs inside chroot
+# Generate initramfs inside chroot (raw image for build-time ukify)
 arch-chroot "${WORK_DIR}/squashfs-root" \
     mkinitcpio -k "${KVER}" \
-    -c /etc/mkinitcpio.conf.d/azure-boot.conf \
     -g /boot/initramfs-azure.img
 
-# Kernel cmdline — uses labels for portability (no UUIDs baked in)
-cat > "${WORK_DIR}/cmdline.txt" << CMDLINE
-root=LABEL=archboot rootflags=compress=zstd:6 rw
-console=tty0 console=ttyS0,115200 bgrt_disable
-lsm=landlock,lockdown,yama,integrity,apparmor,bpf
-slab_nomerge init_on_alloc=1 init_on_free=1
-page_alloc.shuffle=1 pti=on randomize_kstack_offset=on
-vsyscall=none debugfs=off oops=panic
-intel_iommu=on amd_iommu=on
-arch_boot=squashfs
-CMDLINE
+# Kernel cmdline for build-time ukify (matches /etc/kernel/cmdline in the image)
+cp "${WORK_DIR}/squashfs-root/etc/kernel/cmdline" "${WORK_DIR}/cmdline.txt"
 
 # Retrieve or create Secure Boot signing keys.
 # Reuse existing Key Vault secrets when both private key and certificate are
@@ -857,6 +931,11 @@ cp "${SECURE_BOOT_CERTIFICATE_PATH}" "${WORK_DIR}/mnt/efi/keys/secure-boot-certi
 cp "${PCR_SIGNING_PUBLIC_KEY_PATH}" "${WORK_DIR}/mnt/efi/keys/pcr-signing-public-key.pem"
 openssl x509 -in "${SECURE_BOOT_CERTIFICATE_PATH}" -outform DER \
     -out "${WORK_DIR}/mnt/efi/mok-manager.crt"
+
+# Also place PCR signing public key on the archboot BTRFS partition so
+# provision-data-disk.sh can find it at /run/archboot/keys/ during first boot.
+mkdir -p "${WORK_DIR}/mnt/keys"
+cp "${PCR_SIGNING_PUBLIC_KEY_PATH}" "${WORK_DIR}/mnt/keys/pcr-signing-public-key.pem"
 
 ########################################################################
 # PHASE 4: Finalize image

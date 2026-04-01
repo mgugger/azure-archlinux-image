@@ -20,8 +20,8 @@ VAR_MAPPER_NAME="arch_var"
 VAR_CONTAINER_SIZE="768M"
 SECURE_BOOT_PRIVATE_KEY_SECRET_NAME="${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME:-secure-boot-private-key}"
 ROOT_PASSWORD_SECRET_NAME="${ROOT_PASSWORD_SECRET_NAME:-root-login-password}"
-PCR_SIGNING_AVAILABLE=0
 PCR_SIGNING_PUBLIC_KEY_PATH="/run/archboot/keys/pcr-signing-public-key.pem"
+STAGED_PCR_SIGNING_PUBLIC_KEY_PATH="/run/arch-root/pcr-signing-public-key.pem"
 
 FULL_INSTALL_PACKAGES=()
 if [[ -r /usr/local/share/arch-image/packages.conf ]]; then
@@ -43,16 +43,54 @@ PACMAN_IGNORE_PACKAGES=(linux-firmware)
 enroll_tpm2_with_policy() {
     local luks_dev="$1"
     local unlock_key_file="$2"
-    local enroll_args=(--tpm2-device=auto --unlock-key-file="$unlock_key_file")
 
-    if [[ "${PCR_SIGNING_AVAILABLE:-0}" -eq 1 ]]; then
-        echo ":: Enrolling TPM2 key with signed PCR 11 policy"
-        enroll_args+=(--tpm2-public-key="${PCR_SIGNING_PUBLIC_KEY_PATH}" --tpm2-public-key-pcrs=11)
-    else
-        echo ":: Enrolling TPM2 key without PCR policy (PCR signing keys not available)"
+    echo ":: Enrolling TPM2 key with signed PCR 11 policy"
+    systemd-cryptenroll \
+        --tpm2-device=auto \
+        --unlock-key-file="$unlock_key_file" \
+        --tpm2-public-key="${PCR_SIGNING_PUBLIC_KEY_PATH}" \
+        --tpm2-public-key-pcrs=11 \
+        "$luks_dev"
+}
+
+resolve_pcr_signing_public_key() {
+    local candidate
+    local boot_device
+    local boot_mount="/mnt/archboot-keys"
+
+    for candidate in \
+        "/run/archboot/keys/pcr-signing-public-key.pem" \
+        "/run/archboot/efi/keys/pcr-signing-public-key.pem"; do
+        if [[ -f "${candidate}" ]]; then
+            install -Dm644 "${candidate}" "${STAGED_PCR_SIGNING_PUBLIC_KEY_PATH}"
+            PCR_SIGNING_PUBLIC_KEY_PATH="${STAGED_PCR_SIGNING_PUBLIC_KEY_PATH}"
+            return 0
+        fi
+    done
+
+    boot_device="$(blkid -L "archboot" 2>/dev/null || true)"
+    if [[ -z "${boot_device}" ]]; then
+        return 1
     fi
 
-    systemd-cryptenroll "${enroll_args[@]}" "$luks_dev"
+    mkdir -p "${boot_mount}"
+    if ! mount -o ro "${boot_device}" "${boot_mount}" 2>/dev/null; then
+        return 1
+    fi
+
+    for candidate in \
+        "${boot_mount}/keys/pcr-signing-public-key.pem" \
+        "${boot_mount}/efi/keys/pcr-signing-public-key.pem"; do
+        if [[ -f "${candidate}" ]]; then
+            install -Dm644 "${candidate}" "${STAGED_PCR_SIGNING_PUBLIC_KEY_PATH}"
+            PCR_SIGNING_PUBLIC_KEY_PATH="${STAGED_PCR_SIGNING_PUBLIC_KEY_PATH}"
+            umount "${boot_mount}" 2>/dev/null || true
+            return 0
+        fi
+    done
+
+    umount "${boot_mount}" 2>/dev/null || true
+    return 1
 }
 
 # Ensure IgnorePkg is placed under [options], not at EOF where it may be ignored.
@@ -286,15 +324,15 @@ setup_osdisk_var_encryption() {
 }
 
 ########################################################################
-# Enroll TPM with a stable signed PCR11 policy from the prebuilt UKI.
-# The corresponding public key is published on the boot ESP at image build.
+# The build places the PCR signing public key on archboot/ESP.
+# Re-resolve it here because /run/archboot from initrd is not guaranteed
+# to remain mounted after switch-root.
 ########################################################################
-if [[ -f "${PCR_SIGNING_PUBLIC_KEY_PATH}" ]]; then
-    PCR_SIGNING_AVAILABLE=1
-    echo ":: Using build-time PCR signing public key for TPM2 policy enrollment."
-else
-    echo "WARNING: ${PCR_SIGNING_PUBLIC_KEY_PATH} not found; enrolling TPM2 without signed PCR policy."
+if ! resolve_pcr_signing_public_key; then
+    echo "ERROR: PCR signing public key not found in runtime or archboot partition." >&2
+    exit 1
 fi
+echo ":: Using PCR signing public key at ${PCR_SIGNING_PUBLIC_KEY_PATH} for TPM2 policy enrollment."
 
 ########################################################################
 # Step 0: Ensure encrypted /var/log + /var/cache on OS disk (TPM)
@@ -511,9 +549,11 @@ cat > "${MOUNT_ROOT}/etc/crypttab.initramfs" << CRYPTTAB
 arch_root      LABEL=arch_root_luks            -           tpm2-device=auto
 CRYPTTAB
 
-# Mount the ESP from the boot disk
+# Mount the ESP from the boot disk and add to fstab
 BOOT_ESP=$(blkid -L "ESP" 2>/dev/null || echo "/dev/sda1")
 mount "${BOOT_ESP}" "${MOUNT_ROOT}/efi"
+ESP_UUID=$(blkid -s UUID -o value "${BOOT_ESP}")
+printf 'UUID=%s /efi vfat umask=0077 0 1\n' "${ESP_UUID}" >> "${MOUNT_ROOT}/etc/fstab"
 
 # Fetch Secure Boot metadata into the encrypted root.
 # Public cert is on the ESP. Private key retrieval is intentionally deferred
@@ -534,12 +574,8 @@ fi
 echo ":: Deferring Secure Boot private key retrieval to post-provision key-sync."
 
 # PCR signing public key copied from the prebuilt image ESP for TPM policy use.
-PCR_SIGNING_ENABLED=0
-if [[ "${PCR_SIGNING_AVAILABLE}" -eq 1 ]]; then
-    install -Dm644 "${PCR_SIGNING_PUBLIC_KEY_PATH}" \
-       "${MOUNT_ROOT}/etc/kernel/pcr-signing-public-key.pem"
-    PCR_SIGNING_ENABLED=1
-fi
+install -Dm644 "${PCR_SIGNING_PUBLIC_KEY_PATH}" \
+   "${MOUNT_ROOT}/etc/kernel/pcr-signing-public-key.pem"
 
 # Fetch and apply root password from Key Vault so console access requires auth.
 if [[ -n "${KEY_VAULT_NAME}" ]]; then
@@ -559,21 +595,26 @@ cat > "${MOUNT_ROOT}/etc/arch-keyvault.conf" << EOF
 KEY_VAULT_NAME="${KEY_VAULT_NAME}"
 SECURE_BOOT_PRIVATE_KEY_SECRET_NAME="${SECURE_BOOT_PRIVATE_KEY_SECRET_NAME}"
 ROOT_PASSWORD_SECRET_NAME="${ROOT_PASSWORD_SECRET_NAME}"
-PCR_SIGNING_ENABLED=${PCR_SIGNING_ENABLED}
+PCR_SIGNING_PRIVATE_KEY_SECRET_NAME="${PCR_SIGNING_PRIVATE_KEY_SECRET_NAME:-pcr-signing-private-key}"
+PCR_SIGNING_PUBLIC_KEY_SECRET_NAME="${PCR_SIGNING_PUBLIC_KEY_SECRET_NAME:-pcr-signing-public-key}"
+PCR_SIGNING_ENABLED=1
 EOF
 chmod 0600 "${MOUNT_ROOT}/etc/arch-keyvault.conf"
 
-# Build uki.conf with available signing capabilities
+# Build uki.conf — PCR signing is always enabled.
 mkdir -p "${MOUNT_ROOT}/etc/kernel"
-{
-    echo "[UKI]"
-    echo "SecureBootPrivateKey=/etc/kernel/secure-boot-private-key.pem"
-    echo "SecureBootCertificate=/etc/kernel/secure-boot-certificate.pem"
-    if [[ "${PCR_SIGNING_ENABLED}" -eq 1 ]]; then
-        echo "PCRPKey=/etc/kernel/pcr-signing-public-key.pem"
-    fi
-} > "${MOUNT_ROOT}/etc/kernel/uki.conf"
-echo ":: UKI config written (PCR=${PCR_SIGNING_ENABLED})."
+cat > "${MOUNT_ROOT}/etc/kernel/uki.conf" << 'UKICONF'
+[UKI]
+SecureBootPrivateKey=/etc/kernel/secure-boot-private-key.pem
+SecureBootCertificate=/etc/kernel/secure-boot-certificate.pem
+PCRPKey=/etc/kernel/pcr-signing-public-key.pem
+
+[PCRSignature:default]
+PCRPrivateKey=/etc/kernel/pcr-signing-private-key.pem
+PCRPublicKey=/etc/kernel/pcr-signing-public-key.pem
+PCRBanks=sha256
+UKICONF
+echo ":: UKI config written."
 
 # secure-boot-resign script + pacman hook are already shipped in the
 # prebuilt squashfs image and copied to the data-disk root in Step 3.

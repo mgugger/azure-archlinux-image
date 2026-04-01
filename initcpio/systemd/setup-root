@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/bash
 # setup-root — systemd initrd service script
 # Runs after sysroot.mount and cryptsetup.target.
 # LUKS unlock is handled by systemd-cryptsetup via /etc/crypttab (sd-encrypt hook).

@@ -19,6 +19,7 @@ build() {
 
     # Binaries for disk discovery, BTRFS, squashfs overlay
     add_binary /usr/bin/bash
+    add_binary /bin/bash
     add_binary cryptsetup
     add_binary btrfs
     add_binary blkid
