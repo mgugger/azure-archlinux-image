@@ -7,3 +7,11 @@ out/*
 *.pem
 *.vhd
 *.raw
+hosts.ini
+
+# Local Ansible secrets (do not commit)
+ansible/secrets/*.local.yml
+
+# Local run logs
+playbook.log
+!ansible/secrets/*.example.yml

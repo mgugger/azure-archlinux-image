@@ -1,0 +1,14 @@
+[Unit]
+Description=Restic backup on %I without proxy
+After=syslog.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User={{ restic_user }}
+ExecStart=/usr/bin/restic --retry-lock {{ restic_retry_lock }} backup --files-from {{ restic_config_dir }}/%I.files --exclude-file {{ restic_config_dir }}/%I.exclude
+EnvironmentFile={{ restic_config_dir }}/%I.env
+AmbientCapabilities=CAP_DAC_READ_SEARCH
+
+[Install]
+WantedBy=multi-user.target

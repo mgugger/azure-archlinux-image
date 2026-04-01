@@ -1,0 +1,177 @@
+---
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Decide package cache refresh strategy
+  ansible.builtin.set_fact:
+    tinyproxy_running: "{{ (ansible_facts.services['tinyproxy.service'] is defined) and (ansible_facts.services['tinyproxy.service'].state == 'running') }}"
+    nftables_running: "{{ (ansible_facts.services['nftables.service'] is defined) and (ansible_facts.services['nftables.service'].state == 'running') }}"
+
+- name: Install nftables and tinyproxy
+  community.general.pacman:
+    name:
+      - nftables
+      - tinyproxy
+    state: present
+    update_cache: false
+  environment: "{{ (tinyproxy_running | bool) | ternary({'http_proxy': 'http://127.0.0.1:' ~ tinyproxy_port, 'https_proxy': 'http://127.0.0.1:' ~ tinyproxy_port, 'HTTP_PROXY': 'http://127.0.0.1:' ~ tinyproxy_port, 'HTTPS_PROXY': 'http://127.0.0.1:' ~ tinyproxy_port, 'no_proxy': 'localhost,127.0.0.1', 'NO_PROXY': 'localhost,127.0.0.1'}, {}) }}"
+
+- name: Ensure firewalld is absent
+  community.general.pacman:
+    name: firewalld
+    state: absent
+  ignore_errors: true  # not installed is fine
+
+# ── tinyproxy ──────────────────────────────────────────────────────────────
+
+- name: Deploy tinyproxy configuration
+  ansible.builtin.copy:
+    src: tinyproxy.conf
+    dest: /etc/tinyproxy/tinyproxy.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart tinyproxy
+
+- name: Ensure tinyproxy systemd drop-in directory exists
+  ansible.builtin.file:
+    path: /usr/lib/systemd/system/tinyproxy.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy tinyproxy systemd hardening drop-in
+  ansible.builtin.copy:
+    src: tinyproxy.service.d/00-hardening-common.conf
+    dest: /usr/lib/systemd/system/tinyproxy.service.d/00-hardening-common.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart tinyproxy
+
+- name: Ensure tinyproxy filterlist file exists
+  ansible.builtin.file:
+    path: /etc/tinyproxy/filter
+    state: touch
+    owner: root
+    group: tinyproxy
+    mode: '0640'
+
+- name: Ensure static allowed domains block exists in tinyproxy filterlist
+  ansible.builtin.blockinfile:
+    path: /etc/tinyproxy/filter
+    marker: "# {mark} MANAGED STATIC DOMAINS"
+    block: |
+      ## Non-mirror allowed domains managed by Ansible
+      ## fnmatch patterns matched against the request hostname
+      *archlinux.org
+      *pkgbuild.com
+      keyserver.ubuntu.com
+      keys.openpgp.org
+      geo.mirror.pkgbuild.com
+      fastly.mirror.pkgbuild.com
+      *grafana.net
+  notify: Restart tinyproxy
+
+# Flush handlers now so tinyproxy is running with the correct config and
+# filter before nftables locks down outbound traffic.
+- name: Flush handlers before starting tinyproxy
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start tinyproxy
+  ansible.builtin.systemd:
+    name: tinyproxy
+    enabled: true
+    state: started
+
+# ── nftables ───────────────────────────────────────────────────────────────
+
+- name: Deploy nftables ruleset
+  ansible.builtin.template:
+    src: nftables.conf.j2
+    dest: /etc/nftables.conf
+    owner: root
+    group: root
+    mode: '0640'
+    validate: '/usr/sbin/nft --check --file %s'
+  notify: Reload nftables
+
+- name: Enable and start nftables
+  ansible.builtin.systemd:
+    name: nftables
+    enabled: true
+    state: started
+
+# ── mirror list (fetched via tinyproxy once nftables is active) ─────────────
+
+- name: Fetch active Arch Linux mirror list via tinyproxy
+  ansible.builtin.uri:
+    url: https://archlinux.org/mirrors/status/json/
+    return_content: true
+  environment:
+    http_proxy:  "http://127.0.0.1:{{ tinyproxy_port }}"
+    https_proxy: "http://127.0.0.1:{{ tinyproxy_port }}"
+  register: mirror_status
+
+- name: Build filtered mirror hostname list
+  ansible.builtin.set_fact:
+    arch_mirror_hostnames: >-
+      {{ mirror_status.json.urls
+         | selectattr('active',         'equalto', true)
+         | selectattr('protocol',       'in',      ['http', 'https'])
+         | selectattr('completion_pct', 'ge',      mirror_min_completion)
+         | rejectattr('delay',          'none')
+         | selectattr('delay',          'le',      mirror_max_delay)
+         | map(attribute='url')
+         | map('regex_replace', '^https?://([^/:]+)[/:].*$', '\1')
+         | unique | sort | list }}
+
+- name: Update MANAGED ARCH MIRRORS block in tinyproxy filterlist
+  ansible.builtin.blockinfile:
+    path: /etc/tinyproxy/filter
+    marker: "# {mark} MANAGED ARCH MIRRORS"
+    block: "{{ arch_mirror_hostnames | join('\n') }}"
+  notify: Restart tinyproxy
+
+- name: Refresh pacman package databases via tinyproxy
+  ansible.builtin.command:
+    cmd: /usr/bin/pacman --sync --refresh --noconfirm
+  environment:
+    http_proxy:  "http://127.0.0.1:{{ tinyproxy_port }}"
+    https_proxy: "http://127.0.0.1:{{ tinyproxy_port }}"
+    HTTP_PROXY:  "http://127.0.0.1:{{ tinyproxy_port }}"
+    HTTPS_PROXY: "http://127.0.0.1:{{ tinyproxy_port }}"
+  changed_when: false
+
+# ── proxy environment ──────────────────────────────────────────────────────
+
+- name: Set system-wide proxy environment variables
+  ansible.builtin.lineinfile:
+    path: /etc/environment
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}={{ item.value }}"
+    create: true
+  loop:
+    - { key: http_proxy,  value: 'http://127.0.0.1:8888' }
+    - { key: HTTP_PROXY,  value: 'http://127.0.0.1:8888' }
+    - { key: https_proxy, value: 'http://127.0.0.1:8888' }
+    - { key: HTTPS_PROXY, value: 'http://127.0.0.1:8888' }
+    - { key: no_proxy,    value: 'localhost,127.0.0.1' }
+    - { key: NO_PROXY,    value: 'localhost,127.0.0.1' }
+
+- name: Deploy per-unit systemd proxy environment file
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/proxy.env
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      http_proxy=http://127.0.0.1:8888
+      https_proxy=http://127.0.0.1:8888
+      HTTP_PROXY=http://127.0.0.1:8888
+      HTTPS_PROXY=http://127.0.0.1:8888
+      no_proxy=localhost,127.0.0.1
+      NO_PROXY=localhost,127.0.0.1

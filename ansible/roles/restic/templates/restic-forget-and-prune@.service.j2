@@ -1,0 +1,15 @@
+[Unit]
+Description=Restic Forget and Prune on %I
+After=syslog.target
+After=network-online.target
+
+[Service]
+EnvironmentFile=-{{ restic_proxy_env_file }}
+Type=oneshot
+User={{ restic_user }}
+ExecStart=/usr/bin/restic --retry-lock {{ restic_retry_lock }} forget --prune --keep-daily 7 --keep-weekly 4 --keep-monthly 4
+EnvironmentFile={{ restic_config_dir }}/%I.env
+AmbientCapabilities=CAP_DAC_READ_SEARCH
+
+[Install]
+WantedBy=multi-user.target

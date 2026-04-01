@@ -1,0 +1,35 @@
+---
+grafana_alloy_service_name: grafana-alloy
+grafana_alloy_package_name: grafana-alloy
+grafana_alloy_user: grafana-alloy
+grafana_alloy_group: grafana-alloy
+grafana_alloy_proxy_env_file: /etc/systemd/system/proxy.env
+grafana_alloy_config_file: /etc/grafana-alloy/config.alloy
+grafana_alloy_env_file: /etc/grafana-alloy/grafana-cloud.env
+
+# If true, keep existing config when present (except initial bootstrap).
+grafana_alloy_preserve_existing_config: false
+
+# Grafana Cloud endpoints and tenant IDs.
+grafana_alloy_metrics_id: ""
+grafana_alloy_metrics_url: ""
+grafana_alloy_logs_id: ""
+grafana_alloy_logs_url: ""
+
+# Keep secret out of config; it is loaded from grafana_alloy_env_file.
+grafana_alloy_rw_api_key: ""
+
+# systemd-journal grants read access to journal logs.
+# alpm is optional for systems exposing package log/db access via that group.
+grafana_alloy_extra_groups:
+  - systemd-journal
+  - alpm
+
+grafana_alloy_managed_paths:
+  - /var/lib/alloy
+  - /var/log/alloy
+
+grafana_alloy_restic_root_files_path: /etc/restic/root.files
+grafana_alloy_backup_paths:
+  - /etc/alloy
+  - /var/lib/alloy

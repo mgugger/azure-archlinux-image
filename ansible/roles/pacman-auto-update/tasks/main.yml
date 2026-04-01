@@ -1,0 +1,144 @@
+---
+- name: Check whether pacman-auto-update binary exists
+  ansible.builtin.stat:
+    path: /usr/bin/pacman-auto-update
+  register: pacman_auto_update_bin_stat
+
+- name: Download pacman-auto-update installer script
+  ansible.builtin.get_url:
+    url: "{{ pacman_auto_update_install_url }}"
+    dest: /tmp/pacman-auto-update-install.sh
+    mode: '0755'
+  when: not pacman_auto_update_bin_stat.stat.exists
+
+- name: Install pacman-auto-update build dependencies
+  community.general.pacman:
+    name:
+      - base-devel
+      - debugedit
+      - fakeroot
+      - git
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "http://127.0.0.1:8888"
+    https_proxy: "http://127.0.0.1:8888"
+    HTTP_PROXY: "http://127.0.0.1:8888"
+    HTTPS_PROXY: "http://127.0.0.1:8888"
+  when: not pacman_auto_update_bin_stat.stat.exists
+
+- name: Install pacman-auto-update
+  ansible.builtin.command:
+    cmd: /bin/bash /tmp/pacman-auto-update-install.sh
+  become: false
+  when: not pacman_auto_update_bin_stat.stat.exists
+
+- name: Ensure pacman-auto-update service drop-in directory exists
+  ansible.builtin.file:
+    path: /usr/lib/systemd/system/pacman-auto-update.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Ensure pacman-auto-update timer drop-in directory exists
+  ansible.builtin.file:
+    path: /usr/lib/systemd/system/pacman-auto-update.timer.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure pacman-auto-update service proxy environment
+  ansible.builtin.copy:
+    src: http_proxy.conf
+    dest: /usr/lib/systemd/system/pacman-auto-update.service.d/http_proxy.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload systemd daemon
+
+- name: Set pacman-auto-update timer schedule override
+  ansible.builtin.copy:
+    dest: /usr/lib/systemd/system/pacman-auto-update.timer.d/daily.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [Timer]
+      OnBootSec={{ pacman_auto_update_timer_on_boot_sec }}
+      OnUnitInactiveSec={{ pacman_auto_update_timer_on_unit_inactive_sec }}
+  notify: Reload systemd daemon
+
+- name: Install reboot schedule service
+  ansible.builtin.copy:
+    src: reboot-sched.service
+    dest: /etc/systemd/system/reboot-sched.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload systemd daemon
+
+- name: Install reboot schedule timer
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/reboot-sched.timer
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Reboot Scheduling
+
+      [Timer]
+      OnCalendar={{ reboot_sched_on_calendar }}
+      RandomizedDelaySec={{ reboot_sched_randomized_delay_sec }}
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+  notify: Reload systemd daemon
+
+- name: Ensure pacman hooks directory exists
+  ansible.builtin.file:
+    path: /etc/pacman.d/hooks
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install pacman interruption prevention hooks
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/etc/pacman.d/hooks/{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - 00-prevent-interruption-pre.hook
+    - 00-prevent-interruption-post.hook
+
+- name: Check whether restic root files list exists for pacman-auto-update registration
+  ansible.builtin.stat:
+    path: "{{ pacman_auto_update_restic_root_files_path }}"
+  register: pacman_auto_update_restic_root_files_stat
+
+- name: Register pacman-auto-update backup paths in restic root files list
+  ansible.builtin.lineinfile:
+    path: "{{ pacman_auto_update_restic_root_files_path }}"
+    line: "{{ item }}"
+    state: present
+    insertafter: EOF
+  loop: "{{ pacman_auto_update_backup_paths }}"
+  when: pacman_auto_update_restic_root_files_stat.stat.exists
+
+- name: Enable and start pacman-auto-update timer
+  ansible.builtin.systemd:
+    name: pacman-auto-update.timer
+    enabled: true
+    state: started
+
+- name: Enable and start reboot schedule timer
+  ansible.builtin.systemd:
+    name: reboot-sched.timer
+    enabled: true
+    state: started

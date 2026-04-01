@@ -1,0 +1,26 @@
+---
+# Entry point for ansible-pull.
+# Usage:  ansible-pull -U <repo-url> ansible/local.yml
+#
+# Roles applied here are idempotent; safe to re-run on every boot via
+# cloud-init or a systemd timer.
+
+- name: All roles
+  hosts: all
+  connection: ssh
+  become: true
+  pre_tasks:
+    - name: Load local grafana alloy secrets
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/secrets/grafana-alloy.local.yml"
+      when: lookup('ansible.builtin.fileglob', playbook_dir + '/secrets/grafana-alloy.local.yml') | length > 0
+
+  roles:
+    #- networking-hardening
+    #- snapper
+    #- restic
+    #- caddy
+    #- vaultwarden
+    #- grafana-alloy
+    #- jellyfin
+    - pacman-auto-update

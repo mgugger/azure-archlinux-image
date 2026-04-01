@@ -1,0 +1,9 @@
+[Unit]
+Description=Run Restic backup (no proxy) on schedule
+
+[Timer]
+OnCalendar={{ restic_no_proxy_on_calendar }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

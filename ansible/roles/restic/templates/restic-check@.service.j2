@@ -1,0 +1,15 @@
+[Unit]
+Description=Restic backup check on %I
+After=syslog.target
+After=network-online.target
+
+[Service]
+EnvironmentFile=-{{ restic_proxy_env_file }}
+Type=oneshot
+User={{ restic_user }}
+ExecStart=/usr/bin/restic --retry-lock {{ restic_retry_lock }} check --read-data
+EnvironmentFile={{ restic_config_dir }}/%I.env
+AmbientCapabilities=CAP_DAC_READ_SEARCH
+
+[Install]
+WantedBy=multi-user.target

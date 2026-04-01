@@ -1,0 +1,17 @@
+---
+vaultwarden_service_name: vaultwarden
+vaultwarden_user: vaultwarden
+vaultwarden_group: vaultwarden
+vaultwarden_proxy_env_file: /etc/systemd/system/proxy.env
+vaultwarden_env_file: /etc/vaultwarden.env
+
+# Keep both paths because older installs/backups often use bitwarden_rs.
+vaultwarden_managed_paths:
+  - /var/lib/vaultwarden
+  - /var/lib/bitwarden_rs
+  - /var/log/vaultwarden
+
+vaultwarden_restic_root_files_path: /etc/restic/root.files
+vaultwarden_backup_paths:
+  - /etc/vaultwarden.env
+  - /var/lib/vaultwarden

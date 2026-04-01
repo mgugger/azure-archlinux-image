@@ -1,0 +1,115 @@
+---
+- name: Install jellyfin
+  community.general.pacman:
+    name: "{{ jellyfin_packages }}"
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "http://127.0.0.1:8888"
+    https_proxy: "http://127.0.0.1:8888"
+    HTTP_PROXY: "http://127.0.0.1:8888"
+    HTTPS_PROXY: "http://127.0.0.1:8888"
+
+- name: Ensure media path exists and is accessible to jellyfin
+  ansible.builtin.stat:
+    path: "{{ jellyfin_media_path }}"
+  register: jellyfin_media_path_stat
+
+- name: Require media path to exist as a directory
+  ansible.builtin.assert:
+    that:
+      - jellyfin_media_path_stat.stat.exists
+      - jellyfin_media_path_stat.stat.isdir
+    fail_msg: "jellyfin_media_path must exist and be a directory: {{ jellyfin_media_path }}"
+
+- name: Detect media path filesystem type
+  ansible.builtin.command:
+    cmd: "findmnt -n -o FSTYPE --target {{ jellyfin_media_path }}"
+  register: jellyfin_media_fstype
+  changed_when: false
+  failed_when: false
+
+- name: Ensure media path permissions on non-FUSE filesystems
+  ansible.builtin.file:
+    path: "{{ jellyfin_media_path }}"
+    state: directory
+    mode: '0755'
+  when: (jellyfin_media_fstype.stdout | trim) is not match('^fuse')
+
+- name: Ensure jellyfin managed directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ jellyfin_user }}"
+    group: "{{ jellyfin_group }}"
+    mode: '0750'
+  loop: "{{ jellyfin_managed_paths }}"
+
+- name: Check whether restic root files list exists for jellyfin registration
+  ansible.builtin.stat:
+    path: "{{ jellyfin_restic_root_files_path }}"
+  register: jellyfin_restic_root_files_stat
+
+- name: Register jellyfin backup paths in restic root files list
+  ansible.builtin.lineinfile:
+    path: "{{ jellyfin_restic_root_files_path }}"
+    line: "{{ item }}"
+    state: present
+    insertafter: EOF
+  loop: "{{ jellyfin_backup_paths }}"
+  when: jellyfin_restic_root_files_stat.stat.exists
+
+- name: Fix ownership on restored jellyfin data tree
+  ansible.builtin.file:
+    path: /var/lib/jellyfin
+    state: directory
+    owner: "{{ jellyfin_user }}"
+    group: "{{ jellyfin_group }}"
+    recurse: true
+
+- name: Ensure jellyfin service drop-in directory exists
+  ansible.builtin.file:
+    path: /usr/lib/systemd/system/jellyfin.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure jellyfin service proxy environment
+  ansible.builtin.copy:
+    src: http_proxy.conf
+    dest: /usr/lib/systemd/system/jellyfin.service.d/http_proxy.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart jellyfin
+
+- name: Apply jellyfin systemd common hardening
+  ansible.builtin.copy:
+    src: 00-hardening-common.conf
+    dest: /usr/lib/systemd/system/jellyfin.service.d/00-hardening-common.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart jellyfin
+
+- name: Apply jellyfin service specific hardening
+  ansible.builtin.copy:
+    src: 10-hardening-local.conf
+    dest: /usr/lib/systemd/system/jellyfin.service.d/10-hardening-local.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart jellyfin
+
+- name: Enable and start jellyfin
+  ansible.builtin.systemd:
+    name: "{{ jellyfin_service_name }}"
+    enabled: true
+    state: started

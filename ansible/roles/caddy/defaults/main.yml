@@ -1,0 +1,9 @@
+---
+caddy_service_name: caddy
+caddy_proxy_env_file: /etc/systemd/system/proxy.env
+caddy_default_site_domain: <domain>
+
+caddy_restic_root_files_path: /etc/restic/root.files
+caddy_backup_paths:
+	- /etc/caddy
+	- /var/lib/caddy

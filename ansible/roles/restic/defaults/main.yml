@@ -1,0 +1,26 @@
+---
+restic_package_name: restic
+restic_user: restic
+restic_group: restic
+restic_proxy_env_file: /etc/systemd/system/proxy.env
+
+restic_instance_name: root
+restic_config_dir: /etc/restic
+restic_repository: rest:http://127.0.0.1:33333/restic
+restic_password: TODO
+restic_progress_fps: "0.16666"
+restic_retry_lock: 10m
+
+# Seed file list and exclusions are created once and then preserved.
+restic_default_files_content: ""
+restic_default_exclude_content: ".snapshots/*\n"
+
+restic_backup_on_calendar: "*-*-* 13:00:00"
+restic_no_proxy_on_calendar: "*-*-* 10:00:00"
+restic_prune_on_calendar: weekly
+restic_prune_randomized_delay: 8h
+
+# Timers to enable and start by default.
+restic_enabled_timers:
+  - "restic@{{ restic_instance_name }}.timer"
+  - "restic-forget-and-prune@{{ restic_instance_name }}.timer"

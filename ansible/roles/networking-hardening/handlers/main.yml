@@ -1,0 +1,14 @@
+---
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Reload nftables
+  ansible.builtin.service:
+    name: nftables
+    state: reloaded
+
+- name: Restart tinyproxy
+  ansible.builtin.systemd:
+    name: tinyproxy
+    state: restarted

@@ -1,0 +1,60 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+prometheus.exporter.unix "node" {
+}
+
+prometheus.scrape "node" {
+  targets    = prometheus.exporter.unix.node.targets
+  forward_to = [prometheus.remote_write.grafana_cloud.receiver]
+}
+
+prometheus.remote_write "grafana_cloud" {
+  endpoint {
+    url       = "{{ grafana_alloy_metrics_url }}"
+    proxy_url = "http://127.0.0.1:8888"
+
+    basic_auth {
+      username = "{{ grafana_alloy_metrics_id }}"
+      password = sys.env("GCLOUD_RW_API_KEY")
+    }
+  }
+}
+
+loki.relabel "journal" {
+  forward_to = [loki.write.grafana_cloud.receiver]
+
+  rule {
+    source_labels = ["__journal__hostname"]
+    target_label  = "host"
+  }
+
+  rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "unit"
+  }
+
+  rule {
+    source_labels = ["__journal_priority_keyword"]
+    target_label  = "level"
+  }
+}
+
+loki.source.journal "journal" {
+  max_age    = "24h"
+  forward_to = [loki.relabel.journal.receiver]
+}
+
+loki.write "grafana_cloud" {
+  endpoint {
+    url       = "{{ grafana_alloy_logs_url }}"
+    proxy_url = "http://127.0.0.1:8888"
+
+    basic_auth {
+      username = "{{ grafana_alloy_logs_id }}"
+      password = sys.env("GCLOUD_RW_API_KEY")
+    }
+  }
+}

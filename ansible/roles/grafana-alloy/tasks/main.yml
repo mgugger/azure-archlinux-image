@@ -1,0 +1,237 @@
+---
+- name: Install grafana alloy
+  community.general.pacman:
+    name: "{{ grafana_alloy_package_name }}"
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "http://127.0.0.1:8888"
+    https_proxy: "http://127.0.0.1:8888"
+    HTTP_PROXY: "http://127.0.0.1:8888"
+    HTTPS_PROXY: "http://127.0.0.1:8888"
+
+- name: Detect grafana alloy systemd unit name
+  ansible.builtin.command:
+    cmd: /bin/sh -c "systemctl list-unit-files --type=service --no-legend | awk '{print $1}' | grep -E '^(grafana-alloy|alloy)\\.service$' | head -n1"
+  register: grafana_alloy_detected_unit
+  changed_when: false
+  failed_when: false
+
+- name: Set effective grafana alloy service/unit names
+  ansible.builtin.set_fact:
+    grafana_alloy_service_name_effective: "{{ ((grafana_alloy_detected_unit.stdout | trim) | regex_replace('\\.service$', '')) if (grafana_alloy_detected_unit.stdout | trim | length > 0) else grafana_alloy_service_name }}"
+    grafana_alloy_systemd_unit_effective: "{{ (grafana_alloy_detected_unit.stdout | trim) if (grafana_alloy_detected_unit.stdout | trim | length > 0) else (grafana_alloy_service_name ~ '.service') }}"
+
+- name: Detect grafana alloy runtime user
+  ansible.builtin.command:
+    cmd: "systemctl show -p User --value {{ grafana_alloy_systemd_unit_effective }}"
+  register: grafana_alloy_runtime_user_detect
+  changed_when: false
+  failed_when: false
+
+- name: Detect grafana alloy runtime group
+  ansible.builtin.command:
+    cmd: "systemctl show -p Group --value {{ grafana_alloy_systemd_unit_effective }}"
+  register: grafana_alloy_runtime_group_detect
+  changed_when: false
+  failed_when: false
+
+- name: Set effective grafana alloy runtime identity
+  ansible.builtin.set_fact:
+    grafana_alloy_user_effective: "{{ (grafana_alloy_runtime_user_detect.stdout | trim) if (grafana_alloy_runtime_user_detect.stdout | trim | length > 0) else grafana_alloy_user }}"
+    grafana_alloy_group_effective: "{{ (grafana_alloy_runtime_group_detect.stdout | trim) if (grafana_alloy_runtime_group_detect.stdout | trim | length > 0) else grafana_alloy_group }}"
+
+- name: Check which grafana alloy supplementary groups exist
+  ansible.builtin.command:
+    cmd: "getent group {{ item }}"
+  register: grafana_alloy_group_checks
+  changed_when: false
+  failed_when: false
+  loop: "{{ grafana_alloy_extra_groups }}"
+
+- name: Build effective grafana alloy supplementary group list
+  ansible.builtin.set_fact:
+    grafana_alloy_effective_groups: "{{ grafana_alloy_group_checks.results | selectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
+
+- name: Ensure grafana alloy user has supplementary access groups
+  ansible.builtin.user:
+    name: "{{ grafana_alloy_user_effective }}"
+    groups: "{{ grafana_alloy_effective_groups | join(',') }}"
+    append: true
+  when:
+    - grafana_alloy_effective_groups | length > 0
+    - grafana_alloy_user_effective != 'root'
+
+- name: Validate grafana alloy user can read systemd journal
+  ansible.builtin.command:
+    cmd: "runuser -u {{ grafana_alloy_user_effective }} -- /usr/bin/journalctl -n 1 --no-pager"
+  register: grafana_alloy_journal_read_test
+  changed_when: false
+  failed_when: grafana_alloy_journal_read_test.rc != 0
+  when: grafana_alloy_user_effective != 'root'
+
+- name: Ensure grafana alloy managed directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ grafana_alloy_user_effective }}"
+    group: "{{ grafana_alloy_group_effective }}"
+    mode: '0750'
+  loop: "{{ grafana_alloy_managed_paths }}"
+
+- name: Check whether restic root files list exists for grafana alloy registration
+  ansible.builtin.stat:
+    path: "{{ grafana_alloy_restic_root_files_path }}"
+  register: grafana_alloy_restic_root_files_stat
+
+- name: Register grafana alloy backup paths in restic root files list
+  ansible.builtin.lineinfile:
+    path: "{{ grafana_alloy_restic_root_files_path }}"
+    line: "{{ item }}"
+    state: present
+    insertafter: EOF
+  loop: "{{ grafana_alloy_backup_paths }}"
+  when: grafana_alloy_restic_root_files_stat.stat.exists
+
+- name: Fix ownership on restored grafana alloy trees
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ grafana_alloy_user_effective }}"
+    group: "{{ grafana_alloy_group_effective }}"
+    recurse: true
+  loop: "{{ grafana_alloy_managed_paths }}"
+
+- name: Ensure grafana alloy service drop-in directory exists
+  ansible.builtin.file:
+    path: "/usr/lib/systemd/system/{{ grafana_alloy_systemd_unit_effective }}.d"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Ensure grafana alloy config directory exists
+  ansible.builtin.file:
+    path: "{{ grafana_alloy_config_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure grafana alloy service proxy environment
+  ansible.builtin.copy:
+    src: http_proxy.conf
+    dest: "/usr/lib/systemd/system/{{ grafana_alloy_systemd_unit_effective }}.d/http_proxy.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart grafana alloy
+
+- name: Configure grafana alloy service Grafana Cloud auth environment file
+  ansible.builtin.copy:
+    src: grafana-cloud-auth.conf
+    dest: "/usr/lib/systemd/system/{{ grafana_alloy_systemd_unit_effective }}.d/grafana-cloud-auth.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart grafana alloy
+
+- name: Apply grafana alloy systemd common hardening
+  ansible.builtin.copy:
+    src: 00-hardening-common.conf
+    dest: "/usr/lib/systemd/system/{{ grafana_alloy_systemd_unit_effective }}.d/00-hardening-common.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart grafana alloy
+
+- name: Apply grafana alloy service specific hardening
+  ansible.builtin.copy:
+    src: 10-hardening-local.conf
+    dest: "/usr/lib/systemd/system/{{ grafana_alloy_systemd_unit_effective }}.d/10-hardening-local.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart grafana alloy
+
+- name: Check whether grafana alloy config already exists
+  ansible.builtin.stat:
+    path: "{{ grafana_alloy_config_file }}"
+  register: grafana_alloy_config_stat
+
+- name: Check whether grafana alloy config backup exists
+  ansible.builtin.stat:
+    path: "{{ grafana_alloy_config_file }}.bak"
+  register: grafana_alloy_config_backup_stat
+
+- name: Check whether grafana alloy auth env file exists
+  ansible.builtin.stat:
+    path: "{{ grafana_alloy_env_file }}"
+  register: grafana_alloy_env_stat
+
+- name: Decide whether to manage grafana alloy config
+  ansible.builtin.set_fact:
+    grafana_alloy_should_manage_config: "{{ (not grafana_alloy_preserve_existing_config) or (not grafana_alloy_config_stat.stat.exists and not grafana_alloy_config_backup_stat.stat.exists) }}"
+
+- name: Require Grafana Cloud settings when writing managed alloy config
+  ansible.builtin.assert:
+    that:
+      - grafana_alloy_metrics_id | length > 0
+      - grafana_alloy_metrics_url | length > 0
+      - grafana_alloy_logs_id | length > 0
+      - grafana_alloy_logs_url | length > 0
+      - grafana_alloy_rw_api_key | length > 0 or grafana_alloy_env_stat.stat.exists
+    fail_msg: >-
+      Missing Grafana Cloud settings. Provide endpoint IDs/URLs and API key via vars,
+      or pre-create {{ grafana_alloy_env_file }} with GCLOUD_RW_API_KEY=<token>.
+  when: grafana_alloy_should_manage_config
+
+- name: Backup existing grafana alloy config once before managed overwrite
+  ansible.builtin.copy:
+    src: "{{ grafana_alloy_config_file }}"
+    dest: "{{ grafana_alloy_config_file }}.bak"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0644'
+    force: false
+  when:
+    - grafana_alloy_should_manage_config
+    - grafana_alloy_config_stat.stat.exists
+    - not grafana_alloy_config_backup_stat.stat.exists
+
+- name: Write grafana alloy auth env file when API key is supplied
+  ansible.builtin.copy:
+    dest: "{{ grafana_alloy_env_file }}"
+    owner: root
+    group: "{{ grafana_alloy_group_effective }}"
+    mode: '0640'
+    content: |
+      GCLOUD_RW_API_KEY={{ grafana_alloy_rw_api_key }}
+  when: grafana_alloy_rw_api_key | length > 0
+  no_log: true
+  notify: Restart grafana alloy
+
+- name: Write grafana alloy config only when missing
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: "{{ grafana_alloy_config_file }}"
+    owner: root
+    group: root
+    mode: '0644'
+  when: grafana_alloy_should_manage_config
+  notify: Restart grafana alloy
+
+- name: Enable and start grafana alloy
+  ansible.builtin.systemd:
+    name: "{{ grafana_alloy_service_name_effective }}"
+    enabled: true
+    state: started

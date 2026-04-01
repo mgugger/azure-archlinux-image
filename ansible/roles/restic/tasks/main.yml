@@ -1,0 +1,117 @@
+---
+- name: Install restic
+  community.general.pacman:
+    name: "{{ restic_package_name }}"
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "http://127.0.0.1:8888"
+    https_proxy: "http://127.0.0.1:8888"
+    HTTP_PROXY: "http://127.0.0.1:8888"
+    HTTPS_PROXY: "http://127.0.0.1:8888"
+
+- name: Ensure restic group exists
+  ansible.builtin.group:
+    name: "{{ restic_group }}"
+    system: true
+    state: present
+
+- name: Ensure restic user exists
+  ansible.builtin.user:
+    name: "{{ restic_user }}"
+    group: "{{ restic_group }}"
+    create_home: true
+    home: "/home/{{ restic_user }}"
+    shell: /usr/bin/nologin
+    system: true
+    state: present
+
+- name: Ensure restic config directory exists
+  ansible.builtin.file:
+    path: "{{ restic_config_dir }}"
+    state: directory
+    owner: "{{ restic_user }}"
+    group: "{{ restic_group }}"
+    mode: '0750'
+
+- name: Check whether restic instance env file exists
+  ansible.builtin.stat:
+    path: "{{ restic_config_dir }}/{{ restic_instance_name }}.env"
+  register: restic_instance_env_stat
+
+- name: Check whether restic instance files list exists
+  ansible.builtin.stat:
+    path: "{{ restic_config_dir }}/{{ restic_instance_name }}.files"
+  register: restic_instance_files_stat
+
+- name: Seed restic instance env file
+  ansible.builtin.copy:
+    content: |
+      RESTIC_REPOSITORY={{ restic_repository }}
+      RESTIC_PASSWORD={{ restic_password }}
+      RESTIC_PROGRESS_FPS={{ restic_progress_fps }}
+    dest: "{{ restic_config_dir }}/{{ restic_instance_name }}.env"
+    force: false
+    owner: "{{ restic_user }}"
+    group: "{{ restic_group }}"
+    mode: '0600'
+  when: not restic_instance_env_stat.stat.exists
+
+- name: Seed restic instance files list
+  ansible.builtin.copy:
+    content: "{{ restic_default_files_content }}"
+    dest: "{{ restic_config_dir }}/{{ restic_instance_name }}.files"
+    force: false
+    owner: "{{ restic_user }}"
+    group: "{{ restic_group }}"
+    mode: '0640'
+  when: not restic_instance_files_stat.stat.exists
+
+- name: Seed restic instance exclude list
+  ansible.builtin.copy:
+    content: "{{ restic_default_exclude_content }}"
+    dest: "{{ restic_config_dir }}/{{ restic_instance_name }}.exclude"
+    force: false
+    owner: "{{ restic_user }}"
+    group: "{{ restic_group }}"
+    mode: '0640'
+
+- name: Fix ownership on restored restic config tree
+  ansible.builtin.file:
+    path: "{{ restic_config_dir }}"
+    state: directory
+    owner: "{{ restic_user }}"
+    group: "{{ restic_group }}"
+    recurse: true
+
+- name: Install restic systemd unit templates
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - src: restic@.service.j2
+      dest: /etc/systemd/system/restic@.service
+    - src: restic-no-proxy@.service.j2
+      dest: /etc/systemd/system/restic-no-proxy@.service
+    - src: restic-check@.service.j2
+      dest: /etc/systemd/system/restic-check@.service
+    - src: restic-forget-and-prune@.service.j2
+      dest: /etc/systemd/system/restic-forget-and-prune@.service
+    - src: restic@.timer.j2
+      dest: /etc/systemd/system/restic@.timer
+    - src: restic-no-proxy@.timer.j2
+      dest: /etc/systemd/system/restic-no-proxy@.timer
+    - src: restic-forget-and-prune@.timer.j2
+      dest: /etc/systemd/system/restic-forget-and-prune@.timer
+  notify:
+    - Reload systemd daemon
+
+- name: Enable and start configured restic timers
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop: "{{ restic_enabled_timers }}"

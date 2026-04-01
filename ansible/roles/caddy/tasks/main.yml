@@ -1,0 +1,129 @@
+---
+- name: Install caddy
+  community.general.pacman:
+    name: caddy
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "http://127.0.0.1:8888"
+    https_proxy: "http://127.0.0.1:8888"
+    HTTP_PROXY: "http://127.0.0.1:8888"
+    HTTPS_PROXY: "http://127.0.0.1:8888"
+
+- name: Ensure caddy service drop-in directory exists
+  ansible.builtin.file:
+    path: /usr/lib/systemd/system/caddy.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Ensure caddy runtime directories exist with correct ownership
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: caddy
+    group: caddy
+    mode: '0750'
+  loop:
+    - /var/lib/caddy
+    - /var/log/caddy
+
+- name: Check whether restic root files list exists for caddy registration
+  ansible.builtin.stat:
+    path: "{{ caddy_restic_root_files_path }}"
+  register: caddy_restic_root_files_stat
+
+- name: Register caddy backup paths in restic root files list
+  ansible.builtin.lineinfile:
+    path: "{{ caddy_restic_root_files_path }}"
+    line: "{{ item }}"
+    state: present
+    insertafter: EOF
+  loop: "{{ caddy_backup_paths }}"
+  when: caddy_restic_root_files_stat.stat.exists
+
+- name: Fix ownership on restored caddy state/log trees
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: caddy
+    group: caddy
+    recurse: true
+  loop:
+    - /var/lib/caddy
+    - /var/log/caddy
+
+- name: Configure caddy service proxy environment
+  ansible.builtin.copy:
+    src: http_proxy.conf
+    dest: /usr/lib/systemd/system/caddy.service.d/http_proxy.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart caddy
+
+- name: Apply caddy systemd common hardening
+  ansible.builtin.copy:
+    src: 00-hardening-common.conf
+    dest: /usr/lib/systemd/system/caddy.service.d/00-hardening-common.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart caddy
+
+- name: Apply caddy service specific hardening
+  ansible.builtin.copy:
+    src: 10-hardening-local.conf
+    dest: /usr/lib/systemd/system/caddy.service.d/10-hardening-local.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart caddy
+
+- name: Check whether caddy config already exists
+  ansible.builtin.stat:
+    path: /etc/caddy/Caddyfile
+  register: caddyfile_stat
+
+- name: Check whether caddy config backup exists
+  ansible.builtin.stat:
+    path: /etc/caddy/Caddyfile.bak
+  register: caddyfile_backup_stat
+
+- name: Write default Caddyfile only when missing
+  ansible.builtin.copy:
+    dest: /etc/caddy/Caddyfile
+    owner: root
+    group: root
+    mode: '0644'
+    force: false
+    content: |
+      # Replace domain with the FQDN during cloud-init
+      {{ caddy_default_site_domain }} {
+        @insecureadmin {
+          not remote_ip 192.168.0.0/16 172.16.0.0/12 10.0.0.0/8
+          path /admin*
+        }
+        respond @insecureadmin "Access Denied" 403
+
+        reverse_proxy /admin/* localhost:9090 {
+          transport http {
+            tls_insecure_skip_verify
+          }
+        }
+      }
+  notify: Restart caddy
+  when: not caddyfile_stat.stat.exists and not caddyfile_backup_stat.stat.exists
+
+- name: Enable and start caddy
+  ansible.builtin.systemd:
+    name: "{{ caddy_service_name }}"
+    enabled: true
+    state: started

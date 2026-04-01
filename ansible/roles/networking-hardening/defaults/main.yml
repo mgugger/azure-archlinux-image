@@ -1,0 +1,8 @@
+---
+wan_interface: eth0
+wireguard_interface: wg0
+tinyproxy_port: 8888
+
+# Mirror quality thresholds applied when fetching the live mirror list
+mirror_min_completion: 1.0   # 100 % sync completion
+mirror_max_delay: 3600       # seconds since last sync

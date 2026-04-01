@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Restic Forget and Prune weekly
+
+[Timer]
+OnCalendar={{ restic_prune_on_calendar }}
+RandomizedDelaySec={{ restic_prune_randomized_delay }}
+Persistent=true
+
+[Install]
+WantedBy=timers.target

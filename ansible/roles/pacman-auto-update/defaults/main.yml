@@ -1,0 +1,14 @@
+---
+pacman_auto_update_install_url: https://raw.githubusercontent.com/cmuench/pacman-auto-update/master/install.sh
+pacman_auto_update_proxy_env_file: /etc/systemd/system/proxy.env
+pacman_auto_update_timer_on_boot_sec: 2h
+pacman_auto_update_timer_on_unit_inactive_sec: 12h
+
+reboot_sched_on_calendar: Mon,Thu *-*-* 12:00:00
+reboot_sched_randomized_delay_sec: 180min
+
+pacman_auto_update_restic_root_files_path: /etc/restic/root.files
+pacman_auto_update_backup_paths:
+  - /etc/pacman.d/hooks
+  - /etc/systemd/system/reboot-sched.service
+  - /etc/systemd/system/reboot-sched.timer

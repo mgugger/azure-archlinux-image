@@ -1,0 +1,18 @@
+---
+jellyfin_service_name: jellyfin
+jellyfin_packages:
+  - jellyfin-server
+  - jellyfin-web
+jellyfin_user: jellyfin
+jellyfin_group: jellyfin
+
+jellyfin_media_path: /mnt/media
+
+jellyfin_managed_paths:
+  - /var/lib/jellyfin
+  - /var/log/jellyfin
+
+jellyfin_restic_root_files_path: /etc/restic/root.files
+jellyfin_backup_paths:
+  - /etc/jellyfin
+  - /var/lib/jellyfin

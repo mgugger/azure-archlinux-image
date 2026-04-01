@@ -1,0 +1,15 @@
+---
+snapper_packages:
+  - snapper
+  - snap-pac
+snapper_config_name: root
+snapper_config_target: /
+snapper_root_config_path: /etc/snapper/configs/root
+
+# Keep at least 20% free space on the filesystem containing snapshots.
+snapper_free_limit: 0.2
+snapper_space_limit: 0.6
+
+snapper_restic_root_files_path: /etc/restic/root.files
+snapper_backup_paths:
+  - /etc/snapper

@@ -1,0 +1,88 @@
+#!/usr/sbin/nft -f
+
+flush ruleset
+
+define IF_WAN = {{ wan_interface }}
+define IF_WG  = {{ wireguard_interface }}
+
+define AZURE_IMDS        = 169.254.169.254
+define AZURE_WIRESERVER  = 168.63.129.16
+
+table inet filter {
+
+  # ── inbound ──────────────────────────────────────────────────────────────
+
+  chain input {
+    type filter hook input priority filter; policy drop;
+
+    ct state { established, related } accept
+    ct state invalid drop
+
+    iif lo accept
+
+    ip  protocol icmp   accept
+    ip6 nexthdr  icmpv6 accept
+
+    # SSH – rate-limit to 2 new connections/minute to blunt brute force
+    tcp dport 22 ct state new limit rate 2/minute accept
+    tcp dport 22 ct state new log prefix "nft-drop-ssh: " drop
+
+    # HTTP / HTTPS inbound (web-serving or reverse proxy)
+    tcp dport { 80, 443 } accept
+
+    # WireGuard
+    udp dport 51820 accept
+
+    log prefix "nft-drop-in: " drop
+  }
+
+  # ── outbound ─────────────────────────────────────────────────────────────
+  # Default deny. Each allowed owner is listed explicitly so that no
+  # arbitrary user-space process can phone home.
+
+  chain output {
+    type filter hook output priority filter; policy drop;
+
+    ct state { established, related } accept
+    ct state invalid drop
+
+    oif lo accept
+
+    # Allow responses and server-originated traffic to VPN clients over wg0.
+    oifname $IF_WG accept
+
+    ip  protocol icmp   accept
+    ip6 nexthdr  icmpv6 accept
+
+    # tinyproxy – the sole egress path for package manager traffic (IPv4 + IPv6)
+    meta skuid "tinyproxy" tcp dport { 80, 443 } accept
+
+    # Service users (caddy, vaultwarden, grafana-alloy, etc.) reach tinyproxy on localhost
+    meta skuid != 0 ip daddr 127.0.0.1 tcp dport 8888 accept
+    meta skuid != 0 ip6 daddr ::1 tcp dport 8888 accept
+
+    # systemd-resolved – DNS (UDP + TCP) and DNS-over-TLS (port 853)
+    meta skuid "systemd-resolve" udp dport  53  accept
+    meta skuid "systemd-resolve" tcp dport { 53, 853 } accept
+
+    # systemd-timesyncd – NTP
+    meta skuid "systemd-timesync" udp dport 123 accept
+
+    # WireGuard transport packets leaving via WAN (reply path uses sport 51820).
+    oifname $IF_WAN udp sport 51820 accept
+
+    # Azure Instance Metadata Service – root only (cloud-init, waagent)
+    meta skuid 0 ip daddr $AZURE_IMDS tcp dport 80 accept
+
+    # Azure WireServer – root only (VM extension agent)
+    meta skuid 0 ip daddr $AZURE_WIRESERVER tcp dport { 80, 32526 } accept
+
+    log prefix "nft-drop-out: " drop
+  }
+
+  # ── forward ──────────────────────────────────────────────────────────────
+
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+  }
+}

@@ -1,0 +1,61 @@
+---
+- name: Install snapper and snap-pac
+  community.general.pacman:
+    name: "{{ snapper_packages }}"
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "http://127.0.0.1:8888"
+    https_proxy: "http://127.0.0.1:8888"
+    HTTP_PROXY: "http://127.0.0.1:8888"
+    HTTPS_PROXY: "http://127.0.0.1:8888"
+
+- name: Check whether snapper root config exists
+  ansible.builtin.stat:
+    path: "{{ snapper_root_config_path }}"
+  register: snapper_root_config_stat
+
+- name: Create snapper root config
+  ansible.builtin.command:
+    cmd: "snapper --no-dbus -c {{ snapper_config_name }} create-config {{ snapper_config_target }}"
+  when: not snapper_root_config_stat.stat.exists
+
+- name: Setup snapper quota
+  ansible.builtin.command:
+    cmd: snapper --no-dbus setup-quota
+  changed_when: false
+  failed_when: false
+
+- name: Enforce snapper space and free-space limits
+  ansible.builtin.lineinfile:
+    path: "{{ snapper_root_config_path }}"
+    regexp: "^{{ item.key }}="
+    line: "{{ item.key }}=\"{{ item.value }}\""
+  loop:
+    - key: SPACE_LIMIT
+      value: "{{ snapper_space_limit }}"
+    - key: FREE_LIMIT
+      value: "{{ snapper_free_limit }}"
+
+- name: Check whether restic root files list exists for snapper registration
+  ansible.builtin.stat:
+    path: "{{ snapper_restic_root_files_path }}"
+  register: snapper_restic_root_files_stat
+
+- name: Register snapper backup paths in restic root files list
+  ansible.builtin.lineinfile:
+    path: "{{ snapper_restic_root_files_path }}"
+    line: "{{ item }}"
+    state: present
+    insertafter: EOF
+  loop: "{{ snapper_backup_paths }}"
+  when: snapper_restic_root_files_stat.stat.exists
+
+- name: Enable and start snapper timers
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - snapper-timeline.timer
+    - snapper-cleanup.timer
