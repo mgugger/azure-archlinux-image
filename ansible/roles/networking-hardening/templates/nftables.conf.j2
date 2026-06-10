@@ -27,6 +27,10 @@ table inet filter {
     tcp dport 22 ct state new limit rate 2/minute accept
     tcp dport 22 ct state new log prefix "nft-drop-ssh: " drop
 
+    # In input chain: containers query host-side Podman DNS
+    iifname "podman1" ip saddr 10.89.0.0/24 udp dport 53 accept
+    iifname "podman1" ip saddr 10.89.0.0/24 tcp dport 53 accept
+
     # HTTP / HTTPS inbound (web-serving or reverse proxy)
     tcp dport { 80, 443 } accept
 
@@ -70,6 +74,10 @@ table inet filter {
 
     # WireGuard transport packets leaving via WAN (reply path uses sport 51820).
     oifname $IF_WAN udp sport 51820 accept
+
+    # In output chain: host-side Podman DNS replies to containers
+    oifname "podman1" ip saddr 10.89.0.1 ip daddr 10.89.0.0/24 udp sport 53 accept
+    oifname "podman1" ip saddr 10.89.0.1 ip daddr 10.89.0.0/24 tcp sport 53 accept
 
     # Azure Instance Metadata Service – root only (cloud-init, waagent)
     meta skuid 0 ip daddr $AZURE_IMDS tcp dport 80 accept
