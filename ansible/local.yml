@@ -16,11 +16,11 @@
       when: lookup('ansible.builtin.fileglob', playbook_dir + '/secrets/grafana-alloy.local.yml') | length > 0
 
   roles:
-    #- networking-hardening
+    - networking-hardening
     #- snapper
     #- restic
     #- caddy
     #- vaultwarden
     #- grafana-alloy
     #- jellyfin
-    - pacman-auto-update
+    #- pacman-auto-update
