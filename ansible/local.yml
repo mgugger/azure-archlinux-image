@@ -21,6 +21,11 @@
     #- restic
     #- caddy
     #- vaultwarden
-    #- grafana-alloy
+    # - grafana-alloy
     #- jellyfin
     #- pacman-auto-update
+<<<<<<< Updated upstream
+=======
+    #- yay-bin
+    - trilium-next-server
+>>>>>>> Stashed changes

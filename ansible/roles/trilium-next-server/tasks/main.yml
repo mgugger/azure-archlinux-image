@@ -1,0 +1,111 @@
+---
+- name: Ensure yay is installed before AUR package installation
+  ansible.builtin.stat:
+    path: /usr/bin/yay
+  register: trilium_yay_stat
+
+- name: Require yay-bin role to be applied first
+  ansible.builtin.assert:
+    that:
+      - trilium_yay_stat.stat.exists
+    fail_msg: "yay is required. Apply role 'yay-bin' before role 'trilium-next-server'."
+
+- name: Ensure trilium group exists
+  ansible.builtin.group:
+    name: "{{ trilium_next_server_group }}"
+    state: present
+
+- name: Ensure trilium user exists
+  ansible.builtin.user:
+    name: "{{ trilium_next_server_user }}"
+    group: "{{ trilium_next_server_group }}"
+    home: "{{ trilium_next_server_home }}"
+    create_home: true
+    shell: /usr/sbin/nologin
+    system: true
+    state: present
+
+- name: Install trilium-next-server from AUR using yay
+  ansible.builtin.command:
+    cmd: yay -S --noconfirm --needed {{ trilium_next_server_package_name }}
+  become: true
+  become_user: "{{ yay_bin_aur_builder_user | default('aurbuilder') }}"
+  environment:
+    http_proxy: "http://127.0.0.1:8888"
+    https_proxy: "http://127.0.0.1:8888"
+    HTTP_PROXY: "http://127.0.0.1:8888"
+    HTTPS_PROXY: "http://127.0.0.1:8888"
+
+- name: Ensure trilium service drop-in directory exists
+  ansible.builtin.file:
+    path: "{{ trilium_next_server_systemd_dropin_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Remove legacy trilium service override from vendor directory
+  ansible.builtin.file:
+    path: "{{ trilium_next_server_legacy_systemd_override_file }}"
+    state: absent
+  notify:
+    - Reload systemd daemon
+    - Restart trilium next server
+
+- name: Manage trilium service override file
+  ansible.builtin.copy:
+    dest: "{{ trilium_next_server_systemd_override_file }}"
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [Service]
+      User={{ trilium_next_server_user }}
+      Group={{ trilium_next_server_group }}
+      Restart=always
+      NoNewPrivileges=yes
+      PrivateTmp=yes
+      ProtectSystem=strict
+      #ProtectHome=yes
+      #ReadWritePaths=/srv/trilium
+  notify:
+    - Reload systemd daemon
+    - Restart trilium next server
+
+- name: Ensure trilium managed directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ trilium_next_server_user }}"
+    group: "{{ trilium_next_server_group }}"
+    mode: '0750'
+  loop: "{{ trilium_next_server_managed_paths }}"
+
+- name: Check whether restic root files list exists for trilium registration
+  ansible.builtin.stat:
+    path: "{{ trilium_next_server_restic_root_files_path }}"
+  register: trilium_restic_root_files_stat
+
+- name: Register trilium backup paths in restic root files list
+  ansible.builtin.lineinfile:
+    path: "{{ trilium_next_server_restic_root_files_path }}"
+    line: "{{ item }}"
+    state: present
+    insertafter: EOF
+  loop: "{{ trilium_next_server_backup_paths }}"
+  when: trilium_restic_root_files_stat.stat.exists
+
+- name: Fix ownership on restored trilium trees
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ trilium_next_server_user }}"
+    group: "{{ trilium_next_server_group }}"
+    recurse: true
+  loop: "{{ trilium_next_server_managed_paths }}"
+
+- name: Enable and start trilium-next-server
+  ansible.builtin.systemd:
+    name: "{{ trilium_next_server_service_name }}"
+    enabled: true
+    state: started

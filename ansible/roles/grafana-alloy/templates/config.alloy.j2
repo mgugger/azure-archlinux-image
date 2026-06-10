@@ -24,7 +24,7 @@ prometheus.remote_write "grafana_cloud" {
 }
 
 loki.relabel "journal" {
-  forward_to = [loki.write.grafana_cloud.receiver]
+  forward_to = []
 
   rule {
     source_labels = ["__journal__hostname"]
@@ -37,6 +37,21 @@ loki.relabel "journal" {
   }
 
   rule {
+    source_labels = ["__journal__systemd_unit"]
+    target_label  = "service_name"
+  }
+
+  rule {
+    source_labels = ["__journal_syslog_identifier"]
+    target_label  = "syslog_identifier"
+  }
+
+  rule {
+    source_labels = ["__journal__comm"]
+    target_label  = "comm"
+  }
+
+  rule {
     source_labels = ["__journal_priority_keyword"]
     target_label  = "level"
   }
@@ -44,7 +59,8 @@ loki.relabel "journal" {
 
 loki.source.journal "journal" {
   max_age    = "24h"
-  forward_to = [loki.relabel.journal.receiver]
+  relabel_rules = loki.relabel.journal.rules
+  forward_to    = [loki.write.grafana_cloud.receiver]
 }
 
 loki.write "grafana_cloud" {

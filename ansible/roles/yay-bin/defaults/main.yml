@@ -1,0 +1,6 @@
+---
+yay_bin_aur_builder_user: aurbuilder
+yay_bin_aur_builder_group: aurbuilder
+yay_bin_aur_builder_home: /var/lib/aurbuilder
+yay_bin_repo_url: https://aur.archlinux.org/yay-bin.git
+yay_bin_build_dir: /var/tmp/yay-bin

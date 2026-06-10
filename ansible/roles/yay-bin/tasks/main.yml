@@ -1,0 +1,77 @@
+---
+- name: Install build dependencies for yay-bin
+  community.general.pacman:
+    name:
+      - base-devel
+      - git
+      - fakeroot
+      - sudo
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "http://127.0.0.1:8888"
+    https_proxy: "http://127.0.0.1:8888"
+    HTTP_PROXY: "http://127.0.0.1:8888"
+    HTTPS_PROXY: "http://127.0.0.1:8888"
+
+- name: Ensure AUR builder group exists
+  ansible.builtin.group:
+    name: "{{ yay_bin_aur_builder_group }}"
+    state: present
+
+- name: Ensure AUR builder user exists
+  ansible.builtin.user:
+    name: "{{ yay_bin_aur_builder_user }}"
+    group: "{{ yay_bin_aur_builder_group }}"
+    home: "{{ yay_bin_aur_builder_home }}"
+    create_home: true
+    shell: /bin/bash
+    state: present
+
+- name: Allow AUR builder to run pacman without password
+  ansible.builtin.copy:
+    dest: /etc/sudoers.d/90-yay-bin-aur-builder
+    owner: root
+    group: root
+    mode: '0440'
+    content: |
+      {{ yay_bin_aur_builder_user }} ALL=(ALL) NOPASSWD: /usr/bin/pacman
+
+- name: Check whether yay is already installed
+  ansible.builtin.stat:
+    path: /usr/bin/yay
+  register: yay_bin_stat
+
+- name: Remove stale yay build directory
+  ansible.builtin.file:
+    path: "{{ yay_bin_build_dir }}"
+    state: absent
+  when: not yay_bin_stat.stat.exists
+
+- name: Clone yay-bin AUR repository
+  ansible.builtin.git:
+    repo: "{{ yay_bin_repo_url }}"
+    dest: "{{ yay_bin_build_dir }}"
+    version: master
+  become: true
+  become_user: "{{ yay_bin_aur_builder_user }}"
+  when: not yay_bin_stat.stat.exists
+
+- name: Build and install yay-bin
+  ansible.builtin.command:
+    cmd: makepkg -si --noconfirm --skippgpcheck
+    chdir: "{{ yay_bin_build_dir }}"
+  become: true
+  become_user: "{{ yay_bin_aur_builder_user }}"
+  environment:
+    http_proxy: "http://127.0.0.1:8888"
+    https_proxy: "http://127.0.0.1:8888"
+    HTTP_PROXY: "http://127.0.0.1:8888"
+    HTTPS_PROXY: "http://127.0.0.1:8888"
+  when: not yay_bin_stat.stat.exists
+
+- name: Remove yay build directory after install
+  ansible.builtin.file:
+    path: "{{ yay_bin_build_dir }}"
+    state: absent
+  when: not yay_bin_stat.stat.exists

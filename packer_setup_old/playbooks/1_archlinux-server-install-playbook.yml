@@ -55,8 +55,6 @@
       ansible.builtin.include_role:
         name: base-os
 
-    - include_tasks: install-yay.yml
-
     - include_tasks: install-zram-generator.yml
 
     - include_tasks: build-kernel.yml

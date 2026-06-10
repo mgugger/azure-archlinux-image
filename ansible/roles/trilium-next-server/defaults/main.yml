@@ -1,0 +1,18 @@
+---
+trilium_next_server_package_name: trilium-next-server-bin
+trilium_next_server_service_name: trilium-next-server
+trilium_next_server_user: trilium
+trilium_next_server_group: trilium
+trilium_next_server_home: /home/trilium
+trilium_next_server_data_dir: "{{ trilium_next_server_home }}/trilium-data"
+trilium_next_server_systemd_unit: "{{ trilium_next_server_service_name }}.service"
+trilium_next_server_systemd_dropin_dir: "/etc/systemd/system/{{ trilium_next_server_systemd_unit }}.d"
+trilium_next_server_systemd_override_file: "{{ trilium_next_server_systemd_dropin_dir }}/overwrites.conf"
+trilium_next_server_legacy_systemd_dropin_dir: "/usr/lib/systemd/system/{{ trilium_next_server_systemd_unit }}.d"
+trilium_next_server_legacy_systemd_override_file: "{{ trilium_next_server_legacy_systemd_dropin_dir }}/overwrites.conf"
+trilium_next_server_managed_paths:
+  - "{{ trilium_next_server_home }}"
+  - "{{ trilium_next_server_data_dir }}"
+trilium_next_server_restic_root_files_path: /etc/restic/root.files
+trilium_next_server_backup_paths:
+  - "{{ trilium_next_server_data_dir }}"

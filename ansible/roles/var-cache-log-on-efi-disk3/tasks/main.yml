@@ -1,0 +1,351 @@
+---
+- name: Install required packages
+  community.general.pacman:
+    name: "{{ var_cache_log_required_packages }}"
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "http://127.0.0.1:8888"
+    https_proxy: "http://127.0.0.1:8888"
+    HTTP_PROXY: "http://127.0.0.1:8888"
+    HTTPS_PROXY: "http://127.0.0.1:8888"
+
+- name: Resolve /efi source device
+  ansible.builtin.command:
+    cmd: findmnt -n -o SOURCE --evaluate /efi
+  register: var_cache_log_efi_source
+  changed_when: false
+
+- name: Resolve disk containing /efi and its third partition
+  ansible.builtin.shell: |
+    set -euo pipefail
+    efi_part="{{ var_cache_log_efi_source.stdout | trim }}"
+    disk_name="$(lsblk -n -o PKNAME "${efi_part}" | head -n1)"
+    if [[ -z "${disk_name}" ]]; then
+      echo "Could not resolve parent disk for ${efi_part}" >&2
+      exit 1
+    fi
+    third_part="$(lsblk -nrpo NAME,PARTN,PKNAME | awk -v d="${disk_name}" '$2==3 && ($3==d || $3=="/dev/" d) {print $1; exit}')"
+
+    if [[ -z "${third_part}" ]]; then
+      # Fallback for environments where PARTN is unavailable or blank.
+      third_part="$(lsblk -nrpo NAME,TYPE,PKNAME | awk -v d="${disk_name}" '$2=="part" && ($3==d || $3=="/dev/" d) && $1 ~ /p?3$/ {print $1; exit}')"
+    fi
+
+    if [[ -z "${third_part}" ]]; then
+      echo "Could not resolve partition 3 for disk /dev/${disk_name}" >&2
+      exit 1
+    fi
+    printf 'EFI_DISK=/dev/%s\nTHIRD_PART=%s\n' "${disk_name}" "${third_part}"
+  args:
+    executable: /bin/bash
+  register: var_cache_log_disk_info
+  changed_when: false
+
+- name: Set disk facts
+  ansible.builtin.set_fact:
+    var_cache_log_efi_disk: "{{ var_cache_log_disk_info.stdout | regex_search('EFI_DISK=(.+)', '\\1') | first }}"
+    var_cache_log_third_part: "{{ var_cache_log_disk_info.stdout | regex_search('THIRD_PART=(.+)', '\\1') | first }}"
+
+- name: Fail when partition 3 is already mounted
+  ansible.builtin.command:
+    cmd: findmnt -n -S {{ var_cache_log_third_part }}
+  register: var_cache_log_third_mount
+  changed_when: false
+  failed_when: var_cache_log_third_mount.rc == 0
+
+- name: Extend partition 3 to use free space on /efi disk
+  ansible.builtin.shell: |
+    set -euo pipefail
+    disk="{{ var_cache_log_efi_disk }}"
+    part="{{ var_cache_log_third_part }}"
+
+    disk_base="$(basename "${disk}")"
+    part_base="$(basename "${part}")"
+
+    disk_size="$(blockdev --getsize64 "${disk}")"
+    part_size="$(blockdev --getsize64 "${part}")"
+    start_sectors="$(cat "/sys/class/block/${part_base}/start")"
+    sector_size="$(cat "/sys/class/block/${disk_base}/queue/hw_sector_size")"
+    part_end="$(( start_sectors * sector_size + part_size ))"
+    free_tail="$(( disk_size - part_end ))"
+
+    if (( free_tail < 4 * 1024 * 1024 )); then
+      echo "already-full"
+      exit 0
+    fi
+
+    # Azure often expands the backing disk without moving GPT backup header.
+    # Repair GPT metadata first so resizepart has valid constraints.
+    sgdisk -e "${disk}"
+    partprobe "${disk}"
+    udevadm settle
+
+    # Retry resize after GPT repair.
+    parted -s "${disk}" resizepart 3 100%
+    partprobe "${disk}"
+    udevadm settle
+
+    # Verify we actually consumed the tail free space.
+    new_part_size="$(blockdev --getsize64 "${part}")"
+    new_part_end="$(( start_sectors * sector_size + new_part_size ))"
+    new_free_tail="$(( disk_size - new_part_end ))"
+
+    if (( new_free_tail < 4 * 1024 * 1024 )); then
+      echo "resized"
+      exit 0
+    fi
+
+    echo "resize-incomplete" >&2
+    exit 1
+  args:
+    executable: /bin/bash
+  register: var_cache_log_resize
+  changed_when: "'resized' in var_cache_log_resize.stdout"
+
+- name: Read existing partition type
+  ansible.builtin.command:
+    cmd: blkid -o value -s TYPE {{ var_cache_log_third_part }}
+  register: var_cache_log_third_type
+  changed_when: false
+  failed_when: false
+
+- name: Ensure PCR signing public key exists for signed-PCR enrollment
+  ansible.builtin.stat:
+    path: "{{ var_cache_log_pcr_public_key_path }}"
+  register: var_cache_log_pcr_key
+
+- name: Fail if PCR signing public key is missing
+  ansible.builtin.fail:
+    msg: >-
+      Missing {{ var_cache_log_pcr_public_key_path }}. TPM enrollment with signed PCR policy
+      must match provision-data-disk behavior.
+  when: not var_cache_log_pcr_key.stat.exists
+
+- name: Initialize partition 3 as LUKS2 and enroll TPM2 signed PCR policy
+  ansible.builtin.shell: |
+    set -euo pipefail
+    part="{{ var_cache_log_third_part }}"
+    keyfile="$(mktemp /run/.arch-var-key-XXXXXX)"
+    trap 'shred -u "${keyfile}" 2>/dev/null || rm -f "${keyfile}"' EXIT
+    chmod 600 "${keyfile}"
+    recovery_key="$(dd if=/dev/urandom bs=48 count=1 2>/dev/null | base64 | tr -d '\n' | head -c 64)"
+    printf '%s' "${recovery_key}" > "${keyfile}"
+
+    cryptsetup luksFormat --type luks2 \
+      --cipher aes-xts-plain64 \
+      --key-size 512 \
+      --hash sha512 \
+      --pbkdf argon2id \
+      --pbkdf-memory 131072 \
+      --iter-time 5000 \
+      --pbkdf-parallel 2 \
+      --label "{{ var_cache_log_luks_label }}" \
+      --batch-mode \
+      --key-file "${keyfile}" \
+      "${part}"
+
+    cryptsetup open --key-file "${keyfile}" "${part}" "{{ var_cache_log_mapper_name }}"
+
+    systemd-cryptenroll \
+      --tpm2-device=auto \
+      --unlock-key-file="${keyfile}" \
+      --tpm2-public-key="{{ var_cache_log_pcr_public_key_path }}" \
+      --tpm2-public-key-pcrs=11 \
+      "${part}"
+
+    install -m 0600 /dev/null /root/{{ var_cache_log_mapper_name }}.recovery.key
+    printf '%s\n' "${recovery_key}" > /root/{{ var_cache_log_mapper_name }}.recovery.key
+  args:
+    executable: /bin/bash
+  when: var_cache_log_third_type.stdout | trim != 'crypto_LUKS'
+
+- name: Read LUKS UUID for crypttab
+  ansible.builtin.command:
+    cmd: blkid -o value -s UUID {{ var_cache_log_third_part }}
+  register: var_cache_log_luks_uuid
+  changed_when: false
+
+- name: Persist encrypted mapping in crypttab with nofail
+  ansible.builtin.lineinfile:
+    path: /etc/crypttab
+    regexp: '^{{ var_cache_log_mapper_name }}\s+'
+    line: >-
+      {{ var_cache_log_mapper_name }} UUID={{ var_cache_log_luks_uuid.stdout | trim }} -
+      tpm2-device=auto,tpm2-public-key={{ var_cache_log_pcr_public_key_path }},tpm2-public-key-pcrs=11,nofail
+    create: true
+    mode: '0644'
+
+- name: Open mapped device when not already present
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if [[ -e /dev/mapper/{{ var_cache_log_mapper_name }} ]]; then
+      echo "already-open"
+      exit 0
+    fi
+
+    systemd-cryptsetup attach {{ var_cache_log_mapper_name }} {{ var_cache_log_third_part }} - \
+      tpm2-device=auto,tpm2-public-key={{ var_cache_log_pcr_public_key_path }},tpm2-public-key-pcrs=11
+    echo "attached"
+  args:
+    executable: /bin/bash
+  register: var_cache_log_attach
+  changed_when: "'attached' in var_cache_log_attach.stdout"
+
+- name: Read current mapper filesystem type
+  ansible.builtin.command:
+    cmd: blkid -o value -s TYPE /dev/mapper/{{ var_cache_log_mapper_name }}
+  register: var_cache_log_mapper_fs_type
+  changed_when: false
+  failed_when: false
+
+- name: Create BTRFS filesystem on new mapped device
+  ansible.builtin.command:
+    cmd: mkfs.btrfs -f -L {{ var_cache_log_fs_label }} /dev/mapper/{{ var_cache_log_mapper_name }}
+  when: var_cache_log_mapper_fs_type.stdout | trim != 'btrfs'
+
+- name: Ensure staging mount exists
+  ansible.builtin.file:
+    path: "{{ var_cache_log_mount_staging }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Check whether staging mount is already active
+  ansible.builtin.command:
+    cmd: findmnt -n {{ var_cache_log_mount_staging }}
+  register: var_cache_log_staging_mount
+  changed_when: false
+  failed_when: false
+
+- name: Mount mapped device for migration and subvolume management
+  ansible.builtin.command:
+    cmd: >-
+      mount -o subvolid=5,compress=zstd:{{ var_cache_log_compress_level }},noatime
+      /dev/mapper/{{ var_cache_log_mapper_name }} {{ var_cache_log_mount_staging }}
+  when: var_cache_log_staging_mount.rc != 0
+  changed_when: true
+
+- name: Ensure @log and @cache subvolumes exist
+  ansible.builtin.shell: |
+    set -euo pipefail
+    changed=0
+    if [[ ! -d "{{ var_cache_log_mount_staging }}/{{ var_cache_log_subvol_log }}" ]]; then
+      btrfs subvolume create "{{ var_cache_log_mount_staging }}/{{ var_cache_log_subvol_log }}"
+      changed=1
+    fi
+    if [[ ! -d "{{ var_cache_log_mount_staging }}/{{ var_cache_log_subvol_cache }}" ]]; then
+      btrfs subvolume create "{{ var_cache_log_mount_staging }}/{{ var_cache_log_subvol_cache }}"
+      changed=1
+    fi
+    if [[ "${changed}" -eq 1 ]]; then
+      echo changed
+    fi
+  args:
+    executable: /bin/bash
+  register: var_cache_log_subvol_create
+  changed_when: "'changed' in var_cache_log_subvol_create.stdout"
+
+- name: Unmount staging mount
+  ansible.builtin.command:
+    cmd: umount {{ var_cache_log_mount_staging }}
+  changed_when: true
+
+- name: Read current source device for /var/log
+  ansible.builtin.command:
+    cmd: findmnt -n -o SOURCE --evaluate /var/log
+  register: var_cache_log_current_log_source
+  changed_when: false
+
+- name: Read current source device for /var/cache
+  ansible.builtin.command:
+    cmd: findmnt -n -o SOURCE --evaluate /var/cache
+  register: var_cache_log_current_cache_source
+  changed_when: false
+
+- name: Empty existing /var/log and /var/cache before reboot
+  ansible.builtin.shell: |
+    set -euo pipefail
+    find /var/log -mindepth 1 -xdev -exec rm -rf -- {} +
+    find /var/cache -mindepth 1 -xdev -exec rm -rf -- {} +
+  args:
+    executable: /bin/bash
+  when:
+    - var_cache_log_current_log_source.stdout | trim != '/dev/mapper/{{ var_cache_log_mapper_name }}'
+    - var_cache_log_current_cache_source.stdout | trim != '/dev/mapper/{{ var_cache_log_mapper_name }}'
+  changed_when: true
+
+- name: Ensure /etc/fstab exists
+  ansible.builtin.file:
+    path: /etc/fstab
+    state: touch
+    mode: '0644'
+
+- name: Disable pre-existing /var/log and /var/cache mounts from other devices
+  ansible.builtin.shell: |
+    set -euo pipefail
+    tmpfile="$(mktemp /tmp/fstab-var-migrate-XXXXXX)"
+    awk -v mapper="/dev/mapper/{{ var_cache_log_mapper_name }}" '
+      /^[[:space:]]*#/ { print; next }
+      $2=="/var/log" && $1!=mapper {
+        print "# disabled by var-cache-log-on-efi-disk3: " $0
+        next
+      }
+      $2=="/var/cache" && $1!=mapper {
+        print "# disabled by var-cache-log-on-efi-disk3: " $0
+        next
+      }
+      { print }
+    ' /etc/fstab > "${tmpfile}"
+
+    if cmp -s /etc/fstab "${tmpfile}"; then
+      rm -f "${tmpfile}"
+      echo "unchanged"
+      exit 0
+    fi
+
+    install -m 0644 "${tmpfile}" /etc/fstab
+    rm -f "${tmpfile}"
+    echo "updated"
+  args:
+    executable: /bin/bash
+  register: var_cache_log_fstab_disable
+  changed_when: "'updated' in var_cache_log_fstab_disable.stdout"
+
+- name: Persist /var/log mount with nofail
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^/dev/mapper/{{ var_cache_log_mapper_name }}\s+/var/log\s+'
+    line: >-
+      /dev/mapper/{{ var_cache_log_mapper_name }} /var/log btrfs
+      subvol={{ var_cache_log_subvol_log }},compress=zstd:{{ var_cache_log_compress_level }},noatime,nosuid,noexec,nodev,nofail,x-systemd.device-timeout={{ var_cache_log_mount_timeout }} 0 0
+    create: true
+    mode: '0644'
+
+- name: Persist /var/cache mount with nofail
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: '^/dev/mapper/{{ var_cache_log_mapper_name }}\s+/var/cache\s+'
+    line: >-
+      /dev/mapper/{{ var_cache_log_mapper_name }} /var/cache btrfs
+      subvol={{ var_cache_log_subvol_cache }},compress=zstd:{{ var_cache_log_compress_level }},noatime,nosuid,nodev,nofail,x-systemd.device-timeout={{ var_cache_log_mount_timeout }} 0 0
+    create: true
+    mode: '0644'
+
+- name: Ensure mountpoint directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /var/log
+    - /var/cache
+
+- name: Inform about reboot requirement to activate mounts cleanly
+  ansible.builtin.debug:
+    msg: >-
+      /etc/crypttab and /etc/fstab were updated for {{ var_cache_log_mapper_name }}.
+      Reboot is recommended so /var/log and /var/cache switch to the new encrypted partition.

@@ -1,0 +1,19 @@
+---
+var_cache_log_required_packages:
+  - cryptsetup
+  - btrfs-progs
+  - parted
+  - gptfdisk
+
+var_cache_log_mapper_name: arch_var
+var_cache_log_luks_label: arch_var_luks
+var_cache_log_fs_label: arch_var
+var_cache_log_mount_staging: /mnt/arch-var
+var_cache_log_pcr_public_key_path: /etc/kernel/pcr-signing-public-key.pem
+
+var_cache_log_compress_level: 6
+var_cache_log_subvol_log: "@log"
+var_cache_log_subvol_cache: "@cache"
+
+# Keep mount boot-failure tolerant and avoid long boot waits.
+var_cache_log_mount_timeout: 10s

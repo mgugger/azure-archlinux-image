@@ -1,0 +1,6 @@
+---
+- name: Move /var/cache and /var/log to encrypted partition 3 on /efi disk
+  hosts: all
+  become: true
+  roles:
+    - var-cache-log-on-efi-disk3

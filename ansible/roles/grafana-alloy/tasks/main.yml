@@ -162,6 +162,17 @@
     - Reload systemd daemon
     - Restart grafana alloy
 
+- name: Disable grafana alloy usage reporting
+  ansible.builtin.copy:
+    src: 20-disable-reporting.conf
+    dest: "/usr/lib/systemd/system/{{ grafana_alloy_systemd_unit_effective }}.d/20-disable-reporting.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd daemon
+    - Restart grafana alloy
+
 - name: Check whether grafana alloy config already exists
   ansible.builtin.stat:
     path: "{{ grafana_alloy_config_file }}"
