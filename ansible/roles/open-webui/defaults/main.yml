@@ -1,0 +1,27 @@
+---
+open_webui_package_name: open-webui
+open_webui_domain: chat.manolito.wanip.ch
+open_webui_port: 3000
+open_webui_bifrost_url: "http://127.0.0.1:{{ bifrost_port | default(8086) }}/openai/v1"
+open_webui_admin_email: "admin@{{ open_webui_domain }}"
+open_webui_data_dir: /var/lib/open-webui
+open_webui_proxy_url: http://127.0.0.1:8888
+open_webui_caddyfile: /etc/caddy/Caddyfile
+open_webui_restic_files_path: /etc/restic/root.files
+open_webui_proxy_domains:
+  - acme-v02.api.letsencrypt.org
+  - acme-staging-v02.api.letsencrypt.org
+  - acme.zerossl.com
+  - api.zerossl.com
+  - aur.archlinux.org
+  - github.com
+  - "*.github.com"
+  - "*.githubusercontent.com"
+  - pypi.org
+  - files.pythonhosted.org
+  - download.pytorch.org
+  - download-r2.pytorch.org
+  - huggingface.co
+  - "*.huggingface.co"
+  - "*.hf.co"
+  - openaipublic.blob.core.windows.net

@@ -1,0 +1,10 @@
+[Service]
+User={{ netbird_user }}
+Group={{ netbird_group }}
+UMask=0077
+StateDirectoryMode=0700
+ExecStart=
+ExecStart=/usr/bin/netbird-server --config {{ netbird_config_dir }}/config.yaml
+Environment="HTTP_PROXY={{ netbird_proxy_url }}"
+Environment="HTTPS_PROXY={{ netbird_proxy_url }}"
+Environment="NO_PROXY=localhost,127.0.0.1,::1"

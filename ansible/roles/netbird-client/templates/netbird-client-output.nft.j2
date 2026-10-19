@@ -1,0 +1,8 @@
+# The client uses direct TLS for management/relay because gRPC does not reliably
+# honor HTTP proxy variables. Scope that exception to its dedicated service UID.
+oifname {{ netbird_client_wan_interface | to_json }} meta skuid {{ netbird_client_user | to_json }} tcp dport 443 counter accept comment "ansible-netbird-client-https"
+# WireGuard packets are emitted by the kernel as UID 0 and remain constrained
+# to the fixed tunnel source port. STUN/ICE and QUIC intentionally use random
+# source ports, so permit UDP only for the dedicated capability-limited UID.
+oifname {{ netbird_client_wan_interface | to_json }} meta skuid 0 udp sport {{ netbird_client_wireguard_port }} counter accept comment "ansible-netbird-client"
+oifname {{ netbird_client_wan_interface | to_json }} meta skuid {{ netbird_client_user | to_json }} meta l4proto udp counter accept comment "ansible-netbird-client-userspace"

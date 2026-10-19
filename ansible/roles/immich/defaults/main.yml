@@ -1,0 +1,23 @@
+---
+immich_compose_dir: /etc/containers/systemd/immich
+immich_upload_location: /mnt/media/Pictures
+immich_db_data_location: ./postgres
+immich_version: v3
+immich_timezone: Europe/Zurich
+immich_port: 2283
+immich_db_username: postgres
+immich_db_database_name: immich
+# Leave empty to preserve an existing .env file.
+immich_db_password: ""
+immich_host_proxy_url: http://127.0.0.1:8888
+immich_container_proxy_url: http://10.89.0.1:8888
+immich_network_subnet: 10.89.0.0/24
+immich_network_gateway: 10.89.0.1
+immich_network_name: immich_default
+immich_network_interface: podman1
+immich_no_proxy: "localhost,127.0.0.1,::1,database,redis,immich_postgres,immich_redis,immich-machine-learning,{{ immich_network_subnet }}"
+immich_redis_image: docker.io/valkey/valkey:9@sha256:3b55fbaa0cd93cf0d9d961f405e4dfcc70efe325e2d84da207a0a8e6d8fde4f9
+immich_database_image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+immich_media_service: rclone-media.service
+immich_media_mount: /mnt/media
+immich_restic_files_path: /etc/restic/root.files

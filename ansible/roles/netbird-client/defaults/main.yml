@@ -1,0 +1,19 @@
+---
+netbird_client_package_name: netbird-bin
+netbird_client_aur_builder_user: "{{ yay_bin_aur_builder_user | default('aurbuilder') }}"
+netbird_client_service_name: netbird@client.service
+netbird_client_user: netbird-client
+netbird_client_group: netbird-client
+netbird_client_proxy_url: http://127.0.0.1:8888
+netbird_client_management_url: https://netbird.manolito.wanip.ch
+# Must not overlap the host's existing wg0 port (51820). This fixed port makes
+# the default-deny firewall exception deterministic.
+netbird_client_wireguard_port: 51821
+netbird_client_wan_interface: "{{ wan_interface | default('eth0') }}"
+netbird_client_interface: wt0
+netbird_client_restic_files_path: /etc/restic/root.files
+netbird_client_proxy_domains:
+  - aur.archlinux.org
+  - github.com
+  - "*.githubusercontent.com"
+  - "{{ netbird_client_management_url | urlsplit('hostname') }}"

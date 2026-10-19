@@ -1,0 +1,15 @@
+---
+- name: Reload systemd for Open WebUI
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart Open WebUI
+  ansible.builtin.systemd:
+    name: open-webui.service
+    state: restarted
+  when: not ansible_check_mode
+
+- name: Reload Caddy for Open WebUI
+  ansible.builtin.systemd:
+    name: caddy.service
+    state: reloaded

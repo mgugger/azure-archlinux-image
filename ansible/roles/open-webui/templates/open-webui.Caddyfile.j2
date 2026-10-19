@@ -1,0 +1,11 @@
+{{ open_webui_domain }} {
+    @insecureadmin {
+        not remote_ip 192.168.0.0/16 172.16.0.0/12 10.0.0.0/8 100.64.0.0/10 fc00::/7
+        path /*
+    }
+    respond @insecureadmin "Access Denied" 403
+
+    reverse_proxy 127.0.0.1:{{ open_webui_port }} {
+        flush_interval -1
+    }
+}

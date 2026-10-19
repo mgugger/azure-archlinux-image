@@ -1,0 +1,17 @@
+{{ netbird_domain }} {
+    @grpc path /signalexchange.SignalExchange/* /management.ManagementService/* /management.ProxyService/*
+    handle @grpc {
+        reverse_proxy h2c://{{ netbird_listen_address }}
+    }
+
+    @backend path /relay* /ws-proxy/* /api /api/* /oauth2 /oauth2/*
+    handle @backend {
+        reverse_proxy {{ netbird_listen_address }}
+    }
+
+    handle {
+        root * {{ netbird_dashboard_dir }}
+        try_files {path} {path}.html {path}/ /index.html
+        file_server
+    }
+}

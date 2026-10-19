@@ -1,0 +1,313 @@
+---
+- name: Validate fixed NetBird client networking settings
+  ansible.builtin.assert:
+    that:
+      - netbird_client_wireguard_port | string is match('^[0-9]+$')
+      - netbird_client_wireguard_port | int > 1024
+      - netbird_client_wireguard_port | int < 65536
+      - netbird_client_wireguard_port | int != 51820
+      - netbird_client_wan_interface is match('^[a-zA-Z0-9_.-]+$')
+      - netbird_client_interface is match('^[a-zA-Z0-9_.-]+$')
+      - netbird_client_user is match('^[a-z_][a-z0-9_-]*$')
+      - netbird_client_user != 'root'
+    fail_msg: "Use a valid fixed unprivileged NetBird port distinct from wg0/51820 and safe interface names."
+
+- name: Check NetBird client prerequisites
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /usr/bin/yay
+    - /etc/tinyproxy/filter
+    - /etc/nftables.conf
+    - /usr/bin/nft
+    - /dev/net/tun
+  register: netbird_client_prerequisites
+
+- name: Require yay, the host proxy and TUN support
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    fail_msg: "Missing {{ item.item }}. Apply yay-bin and networking-hardening and provide kernel TUN support before netbird-client."
+  loop: "{{ netbird_client_prerequisites.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Give Go applications a working systemd-resolved configuration
+  ansible.builtin.file:
+    src: /run/systemd/resolve/stub-resolv.conf
+    dest: /etc/resolv.conf
+    state: link
+    force: true
+    follow: false
+
+- name: Require the AUR builder account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ netbird_client_aur_builder_user }}"
+
+- name: Allow AUR binary downloads and NetBird management through tinyproxy
+  ansible.builtin.blockinfile:
+    path: /etc/tinyproxy/filter
+    marker: "# {mark} ANSIBLE NETBIRD CLIENT DOMAINS"
+    block: "{{ netbird_client_proxy_domains | join('\n') }}"
+  notify: Restart tinyproxy for NetBird client
+
+- name: Apply NetBird client proxy allowlist before installation
+  ansible.builtin.meta: flush_handlers
+
+- name: Query installed NetBird client binary package
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/pacman
+      - -Q
+      - "{{ netbird_client_package_name }}"
+  register: netbird_client_package_query
+  check_mode: false
+  changed_when: false
+  failed_when: netbird_client_package_query.rc not in [0, 1]
+
+- name: Install NetBird client binary from AUR using yay
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/yay
+      - -S
+      - --noconfirm
+      - --needed
+      - "{{ netbird_client_package_name }}"
+  become: true
+  become_user: "{{ netbird_client_aur_builder_user }}"
+  environment:
+    http_proxy: "{{ netbird_client_proxy_url }}"
+    https_proxy: "{{ netbird_client_proxy_url }}"
+    HTTP_PROXY: "{{ netbird_client_proxy_url }}"
+    HTTPS_PROXY: "{{ netbird_client_proxy_url }}"
+  when: netbird_client_package_query.rc == 1
+  changed_when: true
+  notify: Restart NetBird client
+
+- name: Ensure the dedicated NetBird client group exists
+  ansible.builtin.group:
+    name: "{{ netbird_client_group }}"
+    system: true
+
+- name: Ensure the capability-limited NetBird client account exists
+  ansible.builtin.user:
+    name: "{{ netbird_client_user }}"
+    group: "{{ netbird_client_group }}"
+    home: /var/lib/netbird-client
+    shell: /usr/bin/nologin
+    system: true
+    create_home: false
+
+- name: Install polkit for non-root systemd-resolved link configuration
+  community.general.pacman:
+    name: polkit
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "{{ netbird_client_proxy_url }}"
+    https_proxy: "{{ netbird_client_proxy_url }}"
+
+- name: Ensure polkit rule directory exists
+  ansible.builtin.file:
+    path: /etc/polkit-1/rules.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Permit only the client service account to update link DNS
+  ansible.builtin.template:
+    src: 50-netbird-client-resolved.rules.j2
+    dest: /etc/polkit-1/rules.d/50-netbird-client-resolved.rules
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart NetBird client
+
+- name: Ensure private client configuration and state directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ netbird_client_user }}"
+    group: "{{ netbird_client_group }}"
+    mode: '0700'
+  loop:
+    - /etc/netbird-client
+    - /var/lib/netbird-client
+
+- name: Migrate existing enrollment files without changing their permissions
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ netbird_client_user }}"
+    group: "{{ netbird_client_group }}"
+    recurse: true
+  loop:
+    - /etc/netbird-client
+    - /var/lib/netbird-client
+
+- name: Check whether the client already has an enrollment configuration
+  ansible.builtin.stat:
+    path: /etc/netbird-client/config.json
+  register: netbird_client_config_stat
+
+- name: Read the current client port without exposing enrollment data
+  ansible.builtin.slurp:
+    src: /etc/netbird-client/config.json
+  register: netbird_client_config_content
+  no_log: true
+  when: netbird_client_config_stat.stat.exists
+
+- name: Determine whether the managed client port needs changing
+  ansible.builtin.set_fact:
+    netbird_client_port_needs_update: >-
+      {{ ((netbird_client_config_content.content | b64decode | from_json).WgPort | int) !=
+         (netbird_client_wireguard_port | int) }}
+  no_log: true
+  when: netbird_client_config_stat.stat.exists
+
+- name: Stop an enrolled client before updating its fixed WireGuard port
+  ansible.builtin.systemd:
+    name: "{{ netbird_client_service_name }}"
+    state: stopped
+  when: netbird_client_config_stat.stat.exists and netbird_client_port_needs_update and not ansible_check_mode
+  notify: Restart NetBird client
+
+- name: Set the fixed WireGuard port without replacing enrollment data
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python
+      - -c
+      - |
+        import json, os, sys, tempfile
+        path, port = sys.argv[1], int(sys.argv[2])
+        with open(path, encoding="utf-8") as source:
+            config = json.load(source)
+        if config.get("WgPort") == port:
+            print("unchanged")
+            raise SystemExit(0)
+        config["WgPort"] = port
+        fd, temporary = tempfile.mkstemp(dir=os.path.dirname(path))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as target:
+                json.dump(config, target, separators=(",", ":"))
+                target.write("\n")
+                target.flush()
+                os.fsync(target.fileno())
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, path)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+        print("changed")
+      - /etc/netbird-client/config.json
+      - "{{ netbird_client_wireguard_port | string }}"
+  register: netbird_client_port_update
+  changed_when: netbird_client_port_update.stdout == 'changed'
+  no_log: true
+  when: netbird_client_config_stat.stat.exists and netbird_client_port_needs_update and not ansible_check_mode
+  notify: Restart NetBird client
+
+- name: Protect the patched enrollment configuration for the service account
+  ansible.builtin.file:
+    path: /etc/netbird-client/config.json
+    owner: "{{ netbird_client_user }}"
+    group: "{{ netbird_client_group }}"
+    mode: '0600'
+  when: netbird_client_config_stat.stat.exists
+
+- name: Install scoped NetBird client firewall policy
+  ansible.builtin.include_tasks: firewall.yml
+
+- name: Ensure NetBird client service drop-in directory exists
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ netbird_client_service_name }}.d"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Isolate NetBird client directories from the combined server
+  ansible.builtin.template:
+    src: client.conf.j2
+    dest: "/etc/systemd/system/{{ netbird_client_service_name }}.d/10-ansible.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd for NetBird client
+    - Restart NetBird client
+
+- name: Persist the standard CLI socket symlink across reboot
+  ansible.builtin.copy:
+    dest: /etc/tmpfiles.d/netbird-client.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      L+ /run/netbird.sock - - - - /run/netbird-client/netbird.sock
+
+- name: Keep the standard NetBird CLI socket path
+  ansible.builtin.file:
+    src: /run/netbird-client/netbird.sock
+    dest: /run/netbird.sock
+    state: link
+    force: true
+    follow: false
+    owner: root
+    group: root
+
+- name: Apply NetBird client unit changes before starting
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start the NetBird client daemon without enrollment
+  ansible.builtin.systemd:
+    name: "{{ netbird_client_service_name }}"
+    enabled: true
+    state: started
+  when: not ansible_check_mode or netbird_client_package_query.rc == 0
+
+- name: Wait for the local NetBird client RPC socket
+  ansible.builtin.wait_for:
+    path: /run/netbird.sock
+    state: present
+    timeout: 30
+  when: not ansible_check_mode
+
+- name: Verify installed NetBird client binary
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/netbird
+      - version
+  check_mode: false
+  changed_when: false
+  when: not ansible_check_mode or netbird_client_package_query.rc == 0
+
+- name: Verify the local NetBird client daemon responds to status requests
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/netbird
+      - status
+      - --json
+  changed_when: false
+  no_log: true
+  when: not ansible_check_mode
+
+- name: Check for restic backup registration
+  ansible.builtin.stat:
+    path: "{{ netbird_client_restic_files_path }}"
+  register: netbird_client_restic_stat
+
+- name: Register client configuration and state without replacing enrollment
+  ansible.builtin.lineinfile:
+    path: "{{ netbird_client_restic_files_path }}"
+    line: "{{ item }}"
+  loop:
+    - /etc/netbird-client
+    - /var/lib/netbird-client
+  when: netbird_client_restic_stat.stat.exists
+
+- name: Report NetBird client enrollment instructions
+  ansible.builtin.debug:
+    msg: "Client daemon and scoped firewall are ready. Enroll against {{ netbird_client_management_url }} with the managed fixed WireGuard port {{ netbird_client_wireguard_port }}."

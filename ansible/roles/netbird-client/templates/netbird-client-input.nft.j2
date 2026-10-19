@@ -1,0 +1,3 @@
+# NetBird's own ACL table still enforces overlay policy after this base-chain accept.
+iifname {{ netbird_client_interface | to_json }} counter accept comment "ansible-netbird-client-overlay"
+udp dport {{ netbird_client_wireguard_port }} counter accept comment "ansible-netbird-client"

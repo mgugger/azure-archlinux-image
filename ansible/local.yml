@@ -10,6 +10,12 @@
   connection: ssh
   become: true
   pre_tasks:
+    - name: Load local application secrets
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/secrets/apps.local.yml"
+      when: lookup('ansible.builtin.fileglob', playbook_dir + '/secrets/apps.local.yml') | length > 0
+      tags: always
+
     - name: Load local grafana alloy secrets
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/secrets/grafana-alloy.local.yml"
@@ -24,8 +30,12 @@
     # - grafana-alloy
     #- jellyfin
     #- pacman-auto-update
-<<<<<<< Updated upstream
-=======
     #- yay-bin
     - trilium-next-server
->>>>>>> Stashed changes
+    #- { role: rclone-onedrive, tags: [apps, rclone-onedrive] }
+    #- { role: immich, tags: [apps, immich] }
+    #- { role: papra, tags: [apps, papra] }
+    - { role: netbird, tags: [apps, netbird] }
+    - { role: netbird-client, tags: [apps, netbird-client] }
+    - { role: bifrost, tags: [apps, bifrost] }
+    - { role: open-webui, tags: [apps, open-webui] }

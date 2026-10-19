@@ -1,0 +1,10 @@
+---
+- name: Reload systemd for OneDrive
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart OneDrive mounts
+  ansible.builtin.systemd:
+    name: "rclone-{{ item.name }}.service"
+    state: restarted
+  loop: "{{ rclone_onedrive_mounts }}"

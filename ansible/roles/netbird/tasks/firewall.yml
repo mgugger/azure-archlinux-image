@@ -1,0 +1,106 @@
+---
+- name: Ensure nftables service rule directory exists
+  ansible.builtin.file:
+    path: /etc/nftables.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install persistent NetBird STUN input rule
+  ansible.builtin.template:
+    src: stun-input.nft.j2
+    dest: /etc/nftables.d/netbird-input.nft
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Read the persistent input chain
+  ansible.builtin.slurp:
+    src: /etc/nftables.conf
+  register: netbird_nftables_config
+
+- name: Require the managed input-chain drop anchor
+  ansible.builtin.assert:
+    that:
+      - "'log prefix \"nft-drop-in: \" drop' in (netbird_nftables_config.content | b64decode)"
+    fail_msg: "Expected the networking-hardening input chain in /etc/nftables.conf; refusing to insert a firewall include at an unknown location."
+
+- name: Include service rules before the persistent input-chain drop
+  ansible.builtin.lineinfile:
+    path: /etc/nftables.conf
+    line: '    include "/etc/nftables.d/*-input.nft"'
+    insertbefore: '^\s*log prefix "nft-drop-in: " drop'
+    backup: true
+    validate: /usr/bin/nft --check --file %s
+
+- name: Validate persistent nftables configuration including NetBird
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/nft
+      - --check
+      - --file
+      - /etc/nftables.conf
+  changed_when: false
+  check_mode: false
+
+- name: Inspect live input-chain handles
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/nft
+      - -a
+      - list
+      - chain
+      - inet
+      - filter
+      - input
+  register: netbird_live_input
+  changed_when: false
+  check_mode: false
+
+- name: Locate managed STUN rules and the final live drop
+  ansible.builtin.set_fact:
+    netbird_live_stun_rules: "{{ netbird_live_input.stdout | regex_findall('(?m)^[ \\t]*udp dport ([0-9]+) counter packets [0-9]+ bytes [0-9]+ accept comment \"ansible-netbird-stun\" # handle ([0-9]+)[ \\t]*$') }}"
+    netbird_live_drop_handles: "{{ netbird_live_input.stdout | regex_findall('(?m)^[ \\t]*log prefix \"nft-drop-in: \" drop # handle ([0-9]+)[ \\t]*$') }}"
+
+- name: Require exactly one final input-chain drop
+  ansible.builtin.assert:
+    that:
+      - netbird_live_drop_handles | length == 1
+    fail_msg: "Cannot identify the final live input drop; refusing to change nftables at an unknown position."
+
+- name: Remove outdated live NetBird STUN ports
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/nft
+      - delete
+      - rule
+      - inet
+      - filter
+      - input
+      - handle
+      - "{{ item[1] }}"
+  loop: "{{ netbird_live_stun_rules }}"
+  when: item[0] | int != netbird_stun_port | int
+  changed_when: true
+
+- name: Allow STUN before the live drop without flushing container rules
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/nft
+      - insert
+      - rule
+      - inet
+      - filter
+      - input
+      - position
+      - "{{ netbird_live_drop_handles[0] }}"
+      - udp
+      - dport
+      - "{{ netbird_stun_port | string }}"
+      - counter
+      - accept
+      - comment
+      - '"ansible-netbird-stun"'
+  when: netbird_stun_port | string not in (netbird_live_stun_rules | map('first') | list)
+  changed_when: true

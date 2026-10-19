@@ -2,6 +2,15 @@
 - name: Gather service facts
   ansible.builtin.service_facts:
 
+- name: Validate additional inbound UDP ports
+  ansible.builtin.assert:
+    that:
+      - item | string is match('^[0-9]+$')
+      - item | int > 0
+      - item | int < 65536
+    fail_msg: "networking_hardening_extra_udp_ports must contain valid UDP port numbers."
+  loop: "{{ networking_hardening_extra_udp_ports }}"
+
 - name: Decide package cache refresh strategy
   ansible.builtin.set_fact:
     tinyproxy_running: "{{ (ansible_facts.services['tinyproxy.service'] is defined) and (ansible_facts.services['tinyproxy.service'].state == 'running') }}"
@@ -21,6 +30,16 @@
     name: firewalld
     state: absent
   ignore_errors: true  # not installed is fine
+
+# Keep libc and Go applications on systemd-resolved. An empty regular
+# /etc/resolv.conf makes Go's resolver fall back to ::1/127.0.0.1:53.
+- name: Link resolv.conf to the systemd-resolved stub
+  ansible.builtin.file:
+    src: /run/systemd/resolve/stub-resolv.conf
+    dest: /etc/resolv.conf
+    state: link
+    force: true
+    follow: false
 
 # ── tinyproxy ──────────────────────────────────────────────────────────────
 
@@ -74,6 +93,22 @@
       geo.mirror.pkgbuild.com
       fastly.mirror.pkgbuild.com
       *grafana.net
+      github.com
+      *.githubusercontent.com
+      *.github.com
+      ghcr.io
+      *.docker.io
+      *.docker.com
+      huggingface.co
+      *.huggingface.co
+      *.xethub.hf.co
+      *.cdn.hf.co
+      graph.microsoft.com
+      *.onedrive.com
+      *.microsoft.com
+      login.microsoftonline.com
+      *.microsoftpersonalcontent.com
+      *.live.com
   notify: Restart tinyproxy
 
 # Flush handlers now so tinyproxy is running with the correct config and
@@ -89,7 +124,17 @@
 
 # ── nftables ───────────────────────────────────────────────────────────────
 
+- name: Ensure nftables service rule directory exists
+  tags: [firewall]
+  ansible.builtin.file:
+    path: /etc/nftables.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
 - name: Deploy nftables ruleset
+  tags: [firewall]
   ansible.builtin.template:
     src: nftables.conf.j2
     dest: /etc/nftables.conf
@@ -99,11 +144,36 @@
     validate: '/usr/sbin/nft --check --file %s'
   notify: Reload nftables
 
+- name: Ensure nftables systemd drop-in directory exists
+  tags: [firewall]
+  ansible.builtin.file:
+    path: /etc/systemd/system/nftables.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Keep the oneshot firewall active and support safe reloads
+  tags: [firewall]
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/nftables.service.d/10-ansible.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [Service]
+      RemainAfterExit=yes
+      ExecReload=
+      ExecReload=/usr/bin/nft --file /etc/nftables.conf
+  register: networking_hardening_nft_unit
+
 - name: Enable and start nftables
+  tags: [firewall]
   ansible.builtin.systemd:
     name: nftables
     enabled: true
     state: started
+    daemon_reload: "{{ networking_hardening_nft_unit.changed }}"
 
 # ── mirror list (fetched via tinyproxy once nftables is active) ─────────────
 

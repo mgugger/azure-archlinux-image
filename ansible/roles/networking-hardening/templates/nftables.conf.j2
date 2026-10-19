@@ -1,6 +1,8 @@
 #!/usr/sbin/nft -f
 
-flush ruleset
+# Atomically replace only the host-owned table. Never flush Podman/NetBird tables.
+# 'destroy' is idempotent even on a fresh host (nftables >= 1.0.9).
+destroy table inet filter
 
 define IF_WAN = {{ wan_interface }}
 define IF_WG  = {{ wireguard_interface }}
@@ -30,12 +32,18 @@ table inet filter {
     # In input chain: containers query host-side Podman DNS
     iifname "podman1" ip saddr 10.89.0.0/24 udp dport 53 accept
     iifname "podman1" ip saddr 10.89.0.0/24 tcp dport 53 accept
+    iifname "podman1" ip saddr 10.89.0.0/24 tcp dport 8888 accept
 
-    # HTTP / HTTPS inbound (web-serving or reverse proxy)
+    # HTTP / HTTPS inbound (web-serving or reverse proxy). UDP 443 is HTTP/3.
     tcp dport { 80, 443 } accept
+    udp dport 443 accept
 
     # WireGuard
     udp dport 51820 accept
+{% for port in networking_hardening_extra_udp_ports %}
+    udp dport {{ port }} accept
+{% endfor %}
+    include "/etc/nftables.d/*-input.nft"
 
     log prefix "nft-drop-in: " drop
   }
@@ -72,11 +80,8 @@ table inet filter {
     # systemd-timesyncd – NTP
     meta skuid "systemd-timesync" udp dport 123 accept
 
-    # container -> host tinyproxy
-    iifname "podman1" ip saddr 10.89.0.0/24 tcp dport 8888 accept
-
     # WireGuard transport packets leaving via WAN (reply path uses sport 51820).
-    oifname $IF_WAN udp sport 51820 accept
+    oifname $IF_WAN meta skuid 0 udp sport 51820 accept
 
     # In output chain: host-side Podman DNS replies to containers
     oifname "podman1" ip saddr 10.89.0.1 ip daddr 10.89.0.0/24 udp sport 53 accept
@@ -91,6 +96,9 @@ table inet filter {
     # Azure WireServer – root only (VM extension agent)
     meta skuid 0 ip daddr $AZURE_WIRESERVER tcp dport { 80, 32526 } accept
 
+    # Per-service egress exceptions are installed as small, auditable snippets.
+    include "/etc/nftables.d/*-output.nft"
+
     log prefix "nft-drop-out: " drop
   }
 
@@ -98,5 +106,6 @@ table inet filter {
 
   chain forward {
     type filter hook forward priority filter; policy drop;
+    include "/etc/nftables.d/*-forward.nft"
   }
 }

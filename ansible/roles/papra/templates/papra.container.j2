@@ -1,0 +1,33 @@
+[Unit]
+Description=Papra Document Management
+Wants=network-online.target
+After=network-online.target {{ papra_onedrive_service }}
+Requires={{ papra_onedrive_service }}
+
+[Container]
+Image={{ papra_image }}
+ContainerName=papra
+HttpProxy=false
+PublishPort={{ papra_port }}:1221
+Volume={{ papra_documents_dir }}:/papra-docs:U
+Volume={{ papra_database_dir }}:/papra-db:U
+Volume={{ papra_tessdata_dir }}:/usr/local/share/tessdata:ro
+EnvironmentFile={{ papra_environment_file }}
+Environment=TESSDATA_PREFIX=/usr/local/share/tessdata
+Environment=TRUSTED_ORIGINS={{ papra_trusted_origins }}
+Environment=APP_BASE_URL={{ papra_app_base_url }}
+Environment=DOCUMENT_STORAGE_FILESYSTEM_ROOT=/papra-docs
+Environment=DATABASE_URL=file:///papra-db/papra.sqlite
+Environment=DOCUMENT_STORAGE_ENCRYPTION_IS_ENABLED=true
+{% for language in papra_ocr_languages %}
+Environment=DOCUMENTS_OCR_LANGUAGES[{{ loop.index0 }}]={{ language }}
+{% endfor %}
+
+[Service]
+Environment="HTTP_PROXY={{ papra_proxy_url }}"
+Environment="HTTPS_PROXY={{ papra_proxy_url }}"
+ExecStartPre=/usr/bin/mountpoint -q {{ papra_onedrive_mount }}
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,116 @@
+---
+- name: Check for existing rclone configuration
+  ansible.builtin.stat:
+    path: "{{ rclone_onedrive_config_path }}"
+  register: rclone_onedrive_config_stat
+
+- name: Require restored or supplied rclone credentials
+  ansible.builtin.assert:
+    that:
+      - rclone_onedrive_config_stat.stat.exists or rclone_onedrive_config_content | length > 0
+    fail_msg: "Restore rclone.conf or supply rclone_onedrive_config_content in Ansible Vault or secrets/apps.local.yml."
+
+- name: Install rclone and FUSE
+  community.general.pacman:
+    name:
+      - rclone
+      - fuse3
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "{{ rclone_onedrive_proxy_url }}"
+    https_proxy: "{{ rclone_onedrive_proxy_url }}"
+
+- name: Ensure private rclone configuration directory exists
+  ansible.builtin.file:
+    path: "{{ rclone_onedrive_config_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Seed rclone configuration without overwriting refreshed tokens
+  ansible.builtin.copy:
+    content: "{{ rclone_onedrive_config_content }}"
+    dest: "{{ rclone_onedrive_config_path }}"
+    force: false
+    owner: root
+    group: root
+    mode: '0600'
+  when: rclone_onedrive_config_content | length > 0
+  no_log: true
+  diff: false
+  notify: Restart OneDrive mounts
+
+- name: Protect existing rclone credentials
+  ansible.builtin.file:
+    path: "{{ rclone_onedrive_config_path }}"
+    owner: root
+    group: root
+    mode: '0600'
+  when: rclone_onedrive_config_stat.stat.exists
+
+- name: Validate configured rclone remotes
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/rclone
+      - listremotes
+      - "--config={{ rclone_onedrive_config_path }}"
+  register: rclone_onedrive_remotes
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Require each mount remote to exist
+  ansible.builtin.assert:
+    that:
+      - item.remote in rclone_onedrive_remotes.stdout_lines
+    fail_msg: "Missing rclone remote {{ item.remote }} in {{ rclone_onedrive_config_path }}."
+  loop: "{{ rclone_onedrive_mounts }}"
+  when: not ansible_check_mode
+
+- name: Ensure rclone mountpoints exist without changing mounted permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+  loop: "{{ rclone_onedrive_mounts }}"
+
+- name: Ensure rclone cache directory exists
+  ansible.builtin.file:
+    path: "{{ rclone_onedrive_cache_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Install rclone mount services
+  ansible.builtin.template:
+    src: rclone-mount.service.j2
+    dest: "/etc/systemd/system/rclone-{{ item.name }}.service"
+    owner: root
+    group: root
+    mode: '0644'
+  loop: "{{ rclone_onedrive_mounts }}"
+  notify:
+    - Reload systemd for OneDrive
+    - Restart OneDrive mounts
+
+- name: Apply rclone service changes before starting mounts
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start rclone mounts
+  ansible.builtin.systemd:
+    name: "rclone-{{ item.name }}.service"
+    enabled: true
+    state: started
+  loop: "{{ rclone_onedrive_mounts }}"
+
+- name: Check for restic backup registration
+  ansible.builtin.stat:
+    path: "{{ rclone_onedrive_restic_files_path }}"
+  register: rclone_onedrive_restic_stat
+
+- name: Register rclone credentials for backup
+  ansible.builtin.lineinfile:
+    path: "{{ rclone_onedrive_restic_files_path }}"
+    line: "{{ rclone_onedrive_config_path }}"
+  when: rclone_onedrive_restic_stat.stat.exists

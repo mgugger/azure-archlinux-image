@@ -1,0 +1,9 @@
+---
+- name: Reload systemd for Papra
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart Papra
+  ansible.builtin.systemd:
+    name: papra.service
+    state: restarted

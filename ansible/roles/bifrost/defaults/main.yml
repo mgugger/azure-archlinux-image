@@ -1,0 +1,16 @@
+---
+bifrost_image: docker.io/maximhq/bifrost:v2.3.1
+bifrost_port: 8086
+bifrost_data_dir: /var/lib/bifrost
+bifrost_proxy_url: http://127.0.0.1:8888
+bifrost_restic_files_path: /etc/restic/root.files
+bifrost_proxy_domains:
+  - registry-1.docker.io
+  - auth.docker.io
+  - production.cloudflare.docker.com
+  - "*.r2.cloudflarestorage.com"
+  - getbifrost.ai
+  - api.openai.com
+  - api.anthropic.com
+  - generativelanguage.googleapis.com
+  - mdgcorpfoundry.services.ai.azure.com

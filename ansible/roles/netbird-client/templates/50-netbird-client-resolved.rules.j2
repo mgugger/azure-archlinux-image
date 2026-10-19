@@ -1,0 +1,15 @@
+// NetBird runs without root. Permit only its service account to manage link
+// DNS through resolved (it already has CAP_NET_ADMIN for the tunnel itself).
+polkit.addRule(function(action, subject) {
+    if (subject.user === {{ netbird_client_user | to_json }} && [
+        "org.freedesktop.resolve1.set-dns-servers",
+        "org.freedesktop.resolve1.set-domains",
+        "org.freedesktop.resolve1.set-default-route",
+        "org.freedesktop.resolve1.set-dnssec",
+        "org.freedesktop.resolve1.set-dns-over-tls",
+        "org.freedesktop.resolve1.flush-caches",
+        "org.freedesktop.resolve1.revert"
+    ].indexOf(action.id) !== -1) {
+        return polkit.Result.YES;
+    }
+});

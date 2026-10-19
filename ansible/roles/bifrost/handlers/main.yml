@@ -1,0 +1,15 @@
+---
+- name: Restart tinyproxy for Bifrost
+  ansible.builtin.systemd:
+    name: tinyproxy.service
+    state: restarted
+
+- name: Reload systemd for Bifrost
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart Bifrost
+  ansible.builtin.systemd:
+    name: bifrost.service
+    state: restarted
+  when: not ansible_check_mode

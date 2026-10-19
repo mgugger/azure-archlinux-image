@@ -1,0 +1,38 @@
+---
+netbird_domain: netbird.manolito.wanip.ch
+netbird_packages:
+  - netbird-server
+  - netbird-dashboard
+netbird_aur_builder_user: "{{ yay_bin_aur_builder_user | default('aurbuilder') }}"
+netbird_proxy_url: http://127.0.0.1:8888
+netbird_user: netbird
+netbird_group: netbird
+netbird_config_dir: /etc/netbird-server
+netbird_data_dir: /var/lib/netbird
+netbird_dashboard_dir: /var/lib/netbird-dashboard
+netbird_dashboard_env_file: /etc/netbird-dashboard.env
+netbird_listen_address: 127.0.0.1:8085
+netbird_healthcheck_address: 127.0.0.1:9001
+netbird_metrics_port: 9091
+netbird_stun_port: 3478
+netbird_relay_auth_secret: ""
+netbird_store_encryption_key: ""
+netbird_session_cookie_encryption_key: ""
+netbird_secrets_file: "{{ netbird_config_dir }}/secrets.yml"
+netbird_allow_unconfigured: false
+netbird_caddyfile: /etc/caddy/Caddyfile
+netbird_caddy_write_idle_timeout: 24h
+netbird_restic_files_path: /etc/restic/root.files
+netbird_proxy_domains:
+  - aur.archlinux.org
+  - github.com
+  - "*.github.com"
+  - "*.githubusercontent.com"
+  - proxy.golang.org
+  - sum.golang.org
+  - storage.googleapis.com
+  - registry.npmjs.org
+  - fonts.googleapis.com
+  - fonts.gstatic.com
+  - pkgs.netbird.io
+  - "{{ netbird_domain }}"

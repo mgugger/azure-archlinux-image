@@ -1,0 +1,86 @@
+---
+- name: Check AUR installation prerequisites
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /usr/bin/yay
+    - /etc/tinyproxy/filter
+  register: aur_prerequisites
+
+- name: Require yay-bin and networking-hardening before installing applications
+  ansible.builtin.assert:
+    that: item.stat.exists
+    fail_msg: "Missing {{ item.item }}. Apply yay-bin and networking-hardening first."
+  loop: "{{ aur_prerequisites.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Require the unprivileged AUR builder
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ yay_bin_aur_builder_user }}"
+
+- name: Allow application downloads through tinyproxy
+  ansible.builtin.blockinfile:
+    path: /etc/tinyproxy/filter
+    marker: "# {mark} ANSIBLE {{ aur_application }} DOMAINS"
+    block: "{{ aur_proxy_domains | join('\n') }}"
+  register: aur_proxy_policy
+
+- name: Apply changed application proxy policy
+  ansible.builtin.systemd:
+    name: tinyproxy.service
+    state: restarted
+  when: aur_proxy_policy.changed
+
+- name: Query installed AUR application
+  ansible.builtin.command:
+    argv: "{{ ['/usr/bin/pacman', '-Q'] + aur_packages }}"
+  register: aur_package_query
+  check_mode: false
+  changed_when: false
+  failed_when: aur_package_query.rc not in [0, 1]
+
+- name: Install missing packages without concurrent automatic orphan cleanup
+  when: aur_package_query.rc == 1
+  block:
+    - name: Remember automatic-update timer state
+      ansible.builtin.command:
+        argv: [/usr/bin/systemctl, show, pacman-auto-update.timer, --property=ActiveState, --value]
+      register: aur_update_timer
+      check_mode: false
+      changed_when: false
+
+    - name: Pause automatic updates during AUR installation
+      ansible.builtin.systemd:
+        name: pacman-auto-update.timer
+        state: stopped
+      when: aur_update_timer.stdout == 'active'
+
+    - name: Wait for running automatic updates
+      ansible.builtin.command:
+        argv: [/usr/bin/systemctl, show, pacman-auto-update.service, --property=ActiveState, --value]
+      register: aur_update_service
+      changed_when: false
+      until: aur_update_service.stdout not in ['active', 'activating', 'deactivating']
+      retries: 120
+      delay: 5
+      when: not ansible_check_mode
+
+    - name: Install application from AUR as the unprivileged builder
+      ansible.builtin.command:
+        argv: "{{ ['/usr/bin/yay', '-S', '--noconfirm', '--needed'] + aur_packages }}"
+      become: true
+      become_user: "{{ yay_bin_aur_builder_user }}"
+      environment:
+        http_proxy: "{{ aur_proxy_url }}"
+        https_proxy: "{{ aur_proxy_url }}"
+        HTTP_PROXY: "{{ aur_proxy_url }}"
+        HTTPS_PROXY: "{{ aur_proxy_url }}"
+      changed_when: true
+  always:
+    - name: Restore automatic-update timer after AUR installation
+      ansible.builtin.systemd:
+        name: pacman-auto-update.timer
+        state: started
+      when: (aur_update_timer.stdout | default('')) == 'active'

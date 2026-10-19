@@ -1,0 +1,23 @@
+---
+- name: Restart tinyproxy for NetBird
+  ansible.builtin.systemd:
+    name: tinyproxy.service
+    state: restarted
+
+- name: Reload systemd for NetBird
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart NetBird server
+  ansible.builtin.systemd:
+    name: netbird-server.service
+    state: restarted
+  when: >-
+    netbird_secrets_ready and (not ansible_check_mode or
+    'netbird-server' in (netbird_package_query.results |
+    selectattr('rc', 'equalto', 0) | map(attribute='item') | list))
+
+- name: Reload Caddy for NetBird
+  ansible.builtin.systemd:
+    name: caddy.service
+    state: reloaded

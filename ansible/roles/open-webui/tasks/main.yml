@@ -1,0 +1,184 @@
+---
+- name: Validate Open WebUI hostname and endpoints
+  ansible.builtin.assert:
+    that:
+      - open_webui_domain is match('^(?=.{1,253}$)([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?[.])+[a-zA-Z]{2,63}$')
+      - open_webui_port | string is match('^[0-9]+$')
+      - open_webui_port | int > 1024
+      - open_webui_port | int < 65536
+      - open_webui_bifrost_url is match('^http://127[.]0[.]0[.]1:[0-9]+/openai/v1$')
+      - open_webui_admin_email is match('^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9.-]+$')
+    fail_msg: "Use a DNS hostname, valid administrator email, and a loopback-only Bifrost endpoint."
+
+- name: Check Caddy prerequisites
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /usr/bin/caddy
+    - "{{ open_webui_caddyfile }}"
+  register: open_webui_prerequisites
+
+- name: Require Caddy before publishing Open WebUI
+  ansible.builtin.assert:
+    that: item.stat.exists
+    fail_msg: "Apply caddy before open-webui; missing {{ item.item }}."
+  loop: "{{ open_webui_prerequisites.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Install Open WebUI from AUR
+  ansible.builtin.include_role:
+    name: yay-bin
+    tasks_from: install-aur
+  vars:
+    aur_application: OPEN WEBUI
+    aur_packages: ["{{ open_webui_package_name }}"]
+    aur_proxy_url: "{{ open_webui_proxy_url }}"
+    aur_proxy_domains: "{{ open_webui_proxy_domains }}"
+
+- name: Read installed Open WebUI package version
+  ansible.builtin.command:
+    argv: [/usr/bin/pacman, -Q, "{{ open_webui_package_name }}"]
+  register: open_webui_package_version
+  check_mode: false
+  changed_when: false
+  when: not ansible_check_mode or aur_package_query.rc == 0
+
+- name: Ensure Open WebUI configuration and drop-in directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /etc/open-webui
+    - /etc/systemd/system/open-webui.service.d
+
+- name: Ensure private Open WebUI state and cache exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: open-webui
+    group: open-webui
+    mode: '0700'
+  loop:
+    - "{{ open_webui_data_dir }}"
+    - /var/cache/open-webui
+  when: not ansible_check_mode or aur_package_query.rc == 0
+
+- name: Check for persistent Open WebUI bootstrap credentials
+  ansible.builtin.stat:
+    path: /etc/open-webui/secret.env
+  register: open_webui_secret_stat
+
+- name: Generate persistent Open WebUI bootstrap credentials
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python
+      - -c
+      - "import secrets; print('WEBUI_SECRET_KEY=' + secrets.token_hex(32)); print('WEBUI_ADMIN_PASSWORD=' + secrets.token_urlsafe(32))"
+  register: open_webui_generated_secrets
+  changed_when: false
+  no_log: true
+  when: not open_webui_secret_stat.stat.exists and not ansible_check_mode
+
+- name: Seed Open WebUI bootstrap credentials without overwriting restored secrets
+  ansible.builtin.copy:
+    dest: /etc/open-webui/secret.env
+    content: "{{ open_webui_generated_secrets.stdout }}\n"
+    force: false
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  diff: false
+  when: not open_webui_secret_stat.stat.exists and not ansible_check_mode
+  notify: Restart Open WebUI
+
+- name: Protect restored Open WebUI bootstrap credentials
+  ansible.builtin.file:
+    path: /etc/open-webui/secret.env
+    owner: root
+    group: root
+    mode: '0600'
+  when: open_webui_secret_stat.stat.exists
+
+- name: Configure Open WebUI environment
+  ansible.builtin.template:
+    src: environment.j2
+    dest: /etc/open-webui/environment
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart Open WebUI
+
+- name: Configure loopback-only Open WebUI service
+  ansible.builtin.template:
+    src: service.conf.j2
+    dest: /etc/systemd/system/open-webui.service.d/10-ansible.conf
+    owner: root
+    group: root
+    mode: '0644'
+  vars:
+    open_webui_version: "{{ open_webui_package_version.stdout.split()[1].rsplit('-', 1)[0] }}"
+  when: not ansible_check_mode or aur_package_query.rc == 0
+  notify:
+    - Reload systemd for Open WebUI
+    - Restart Open WebUI
+
+- name: Apply Open WebUI service changes before starting
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start Open WebUI
+  ansible.builtin.systemd:
+    name: open-webui.service
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+
+- name: Wait for Open WebUI health including initial Python environment installation
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ open_webui_port }}/health"
+    use_proxy: false
+  register: open_webui_health
+  until: open_webui_health.status == 200
+  retries: 180
+  delay: 10
+  when: not ansible_check_mode
+
+- name: Publish Open WebUI through a validated Caddy site
+  ansible.builtin.blockinfile:
+    path: "{{ open_webui_caddyfile }}"
+    marker: "# {mark} ANSIBLE OPEN WEBUI"
+    block: "{{ lookup('ansible.builtin.template', 'open-webui.Caddyfile.j2') }}"
+    validate: /usr/bin/caddy validate --adapter caddyfile --config %s
+  notify: Reload Caddy for Open WebUI
+
+- name: Enable and start Caddy
+  ansible.builtin.systemd:
+    name: caddy.service
+    enabled: true
+    state: started
+
+- name: Apply Open WebUI Caddy route
+  ansible.builtin.meta: flush_handlers
+
+- name: Check for restic backup registration
+  ansible.builtin.stat:
+    path: "{{ open_webui_restic_files_path }}"
+  register: open_webui_restic_stat
+
+- name: Register Open WebUI database and configuration for backup
+  ansible.builtin.lineinfile:
+    path: "{{ open_webui_restic_files_path }}"
+    line: "{{ item }}"
+  loop:
+    - "{{ open_webui_data_dir }}"
+    - /etc/open-webui
+    - "{{ open_webui_caddyfile }}"
+  when: open_webui_restic_stat.stat.exists
+
+- name: Report Open WebUI administrator bootstrap
+  ansible.builtin.debug:
+    msg: "Open https://{{ open_webui_domain }} as {{ open_webui_admin_email }}. The initial password is stored only on the server in /etc/open-webui/secret.env; change it after login. Public signup is disabled."

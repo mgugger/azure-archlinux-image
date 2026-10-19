@@ -1,0 +1,141 @@
+---
+- name: Validate Bifrost loopback port
+  ansible.builtin.assert:
+    that:
+      - bifrost_port | string is match('^[0-9]+$')
+      - bifrost_port | int > 1024
+      - bifrost_port | int < 65536
+    fail_msg: "Use an unprivileged Bifrost TCP port."
+
+- name: Install Podman
+  community.general.pacman:
+    name: podman
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "{{ bifrost_proxy_url }}"
+    https_proxy: "{{ bifrost_proxy_url }}"
+
+- name: Allow Bifrost image downloads and providers through tinyproxy
+  ansible.builtin.blockinfile:
+    path: /etc/tinyproxy/filter
+    marker: "# {mark} ANSIBLE BIFROST DOMAINS"
+    block: "{{ bifrost_proxy_domains | join('\n') }}"
+  notify: Restart tinyproxy for Bifrost
+
+- name: Ensure private Bifrost state exists
+  ansible.builtin.file:
+    path: "{{ bifrost_data_dir }}"
+    state: directory
+    owner: '1000'
+    group: '0'
+    mode: '0700'
+
+- name: Ensure system Quadlet directory exists
+  ansible.builtin.file:
+    path: /etc/containers/systemd
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Ensure private Bifrost configuration directory exists
+  ansible.builtin.file:
+    path: /etc/bifrost
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Check for persistent Bifrost setup token
+  ansible.builtin.stat:
+    path: /etc/bifrost/secret.env
+  register: bifrost_secret_stat
+
+- name: Generate Bifrost setup token on the server
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/python
+      - -c
+      - "import secrets; print('BIFROST_SETUP_TOKEN=' + secrets.token_hex(32))"
+  register: bifrost_generated_secret
+  changed_when: false
+  no_log: true
+  when: not bifrost_secret_stat.stat.exists and not ansible_check_mode
+
+- name: Seed Bifrost setup token without replacing restored credentials
+  ansible.builtin.copy:
+    dest: /etc/bifrost/secret.env
+    content: "{{ bifrost_generated_secret.stdout }}\n"
+    force: false
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  diff: false
+  when: not bifrost_secret_stat.stat.exists and not ansible_check_mode
+  notify: Restart Bifrost
+
+- name: Protect restored Bifrost setup token
+  ansible.builtin.file:
+    path: /etc/bifrost/secret.env
+    owner: root
+    group: root
+    mode: '0600'
+  when: bifrost_secret_stat.stat.exists
+
+- name: Install Bifrost Quadlet
+  ansible.builtin.template:
+    src: bifrost.container.j2
+    dest: /etc/containers/systemd/bifrost.container
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd for Bifrost
+    - Restart Bifrost
+
+- name: Apply Bifrost service changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Start Bifrost generated service
+  ansible.builtin.systemd:
+    name: bifrost.service
+    state: started
+  when: not ansible_check_mode
+
+- name: Verify Bifrost health
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ bifrost_port }}/health"
+    use_proxy: false
+  register: bifrost_health
+  until: bifrost_health.status == 200
+  retries: 30
+  delay: 2
+  when: not ansible_check_mode
+
+- name: Verify Bifrost dashboard setup is available or already completed
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ bifrost_port }}/api/session/is-auth-enabled"
+    use_proxy: false
+  register: bifrost_auth_status
+  failed_when: >-
+    bifrost_auth_status.status != 200 or
+    not (bifrost_auth_status.json.setup_token_configured or
+         bifrost_auth_status.json.is_auth_enabled)
+  when: not ansible_check_mode
+
+- name: Check for restic backup registration
+  ansible.builtin.stat:
+    path: "{{ bifrost_restic_files_path }}"
+  register: bifrost_restic_stat
+
+- name: Register Bifrost state and Quadlet for backup
+  ansible.builtin.lineinfile:
+    path: "{{ bifrost_restic_files_path }}"
+    line: "{{ item }}"
+  loop:
+    - "{{ bifrost_data_dir }}"
+    - /etc/bifrost
+    - /etc/containers/systemd/bifrost.container
+  when: bifrost_restic_stat.stat.exists

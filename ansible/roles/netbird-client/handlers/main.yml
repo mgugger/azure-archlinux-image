@@ -1,0 +1,15 @@
+---
+- name: Restart tinyproxy for NetBird client
+  ansible.builtin.systemd:
+    name: tinyproxy.service
+    state: restarted
+
+- name: Reload systemd for NetBird client
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart NetBird client
+  ansible.builtin.systemd:
+    name: "{{ netbird_client_service_name }}"
+    state: restarted
+  when: not ansible_check_mode or netbird_client_package_query.rc == 0

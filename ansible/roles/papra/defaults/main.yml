@@ -1,0 +1,17 @@
+---
+papra_image: ghcr.io/papra-hq/papra:latest
+papra_port: 1221
+papra_documents_dir: /mnt/onedrive/Papra_Docs
+papra_database_dir: /var/lib/papra-db
+papra_tessdata_dir: /usr/share/tessdata
+papra_ocr_languages:
+  - eng
+papra_trusted_origins: https://docs.manolito.wanip.ch
+papra_app_base_url: http://docs.manolito.wanip.ch
+papra_auth_secret: ""
+papra_document_encryption_keys: ""
+papra_environment_file: /etc/papra/papra.env
+papra_proxy_url: http://127.0.0.1:8888
+papra_onedrive_service: rclone-onedrive.service
+papra_onedrive_mount: /mnt/onedrive
+papra_restic_files_path: /etc/restic/root.files

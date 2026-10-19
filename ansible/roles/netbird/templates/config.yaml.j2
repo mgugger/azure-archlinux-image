@@ -1,0 +1,31 @@
+server:
+  listenAddress: {{ netbird_listen_address | to_json }}
+  exposedAddress: "https://{{ netbird_domain }}:443"
+  stunPorts:
+    - {{ netbird_stun_port }}
+  metricsPort: {{ netbird_metrics_port }}
+  healthcheckAddress: {{ netbird_healthcheck_address | to_json }}
+  logLevel: info
+  logFile: console
+  authSecret: {{ netbird_relay_auth_secret | to_json }}
+  dataDir: {{ netbird_data_dir | to_json }}
+  disableAnonymousMetrics: true
+  disableGeoliteUpdate: true
+  auth:
+    issuer: "https://{{ netbird_domain }}/oauth2"
+    localAuthDisabled: false
+    signKeyRefreshEnabled: true
+    sessionCookieEncryptionKey: {{ netbird_session_cookie_encryption_key | to_json }}
+    dashboardRedirectURIs:
+      - "https://{{ netbird_domain }}/nb-auth"
+      - "https://{{ netbird_domain }}/nb-silent-auth"
+    cliRedirectURIs:
+      - "http://localhost:53000/"
+  reverseProxy:
+    trustedHTTPProxies:
+      - 127.0.0.1/32
+    trustedPeers:
+      - 127.0.0.1/32
+  store:
+    engine: sqlite
+    encryptionKey: {{ netbird_store_encryption_key | to_json }}

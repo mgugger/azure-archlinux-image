@@ -1,0 +1,4 @@
+# Only published/DNAT container services are forwarded from the overlay.
+# NetBird's separate ACL table remains authoritative for peer access.
+iifname {{ netbird_client_interface | to_json }} ct status dnat counter accept comment "ansible-netbird-client-forward"
+oifname {{ netbird_client_interface | to_json }} ct state established,related counter accept comment "ansible-netbird-client-return"

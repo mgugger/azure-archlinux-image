@@ -1,0 +1,9 @@
+---
+- name: Reload systemd for Immich
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Restart Immich
+  ansible.builtin.systemd:
+    name: immich-compose.service
+    state: restarted

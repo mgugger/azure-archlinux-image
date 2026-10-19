@@ -1,0 +1,31 @@
+[Unit]
+Description=Bifrost AI gateway
+After=network-online.target tinyproxy.service
+Wants=network-online.target
+
+[Container]
+Image={{ bifrost_image }}
+ContainerName=bifrost
+Network=host
+HttpProxy=false
+EnvironmentFile=/etc/bifrost/secret.env
+User=1000:0
+Volume={{ bifrost_data_dir }}:/app/data:U
+Environment=APP_HOST=127.0.0.1
+Environment=APP_PORT={{ bifrost_port }}
+Environment=APP_DIR=/app/data
+Environment=HTTP_PROXY={{ bifrost_proxy_url }}
+Environment=HTTPS_PROXY={{ bifrost_proxy_url }}
+Environment=NO_PROXY=localhost,127.0.0.1,::1
+NoNewPrivileges=true
+DropCapability=all
+
+[Service]
+Environment="HTTP_PROXY={{ bifrost_proxy_url }}"
+Environment="HTTPS_PROXY={{ bifrost_proxy_url }}"
+Restart=always
+TimeoutStartSec=900
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

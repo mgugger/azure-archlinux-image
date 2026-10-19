@@ -1,0 +1,32 @@
+[Unit]
+After=systemd-resolved.service nftables.service
+Wants=systemd-resolved.service
+
+[Service]
+User={{ netbird_client_user }}
+Group={{ netbird_client_group }}
+UMask=0077
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW CAP_NET_BIND_SERVICE
+EnvironmentFile=
+Environment="NB_STATE_DIR=/var/lib/netbird-client"
+Environment="HTTP_PROXY={{ netbird_client_proxy_url }}"
+Environment="HTTPS_PROXY={{ netbird_client_proxy_url }}"
+Environment="NO_PROXY=localhost,127.0.0.1,::1"
+ExecStart=
+ExecStart=/usr/bin/netbird service run --config /etc/netbird-client/config.json --log-file /var/log/netbird-client/client.log --daemon-addr unix:///var/run/netbird-client/netbird.sock
+CacheDirectory=
+CacheDirectory=netbird-client
+CacheDirectoryMode=0700
+ConfigurationDirectory=
+ConfigurationDirectory=netbird-client
+ConfigurationDirectoryMode=0700
+LogsDirectory=
+LogsDirectory=netbird-client
+LogsDirectoryMode=0700
+RuntimeDirectory=
+RuntimeDirectory=netbird-client
+RuntimeDirectoryMode=0700
+StateDirectory=
+StateDirectory=netbird-client
+StateDirectoryMode=0700

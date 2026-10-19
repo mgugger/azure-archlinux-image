@@ -1,0 +1,139 @@
+---
+- name: Install persistent NetBird client input firewall snippet
+  ansible.builtin.template:
+    src: netbird-client-input.nft.j2
+    dest: /etc/nftables.d/netbird-client-input.nft
+    owner: root
+    group: root
+    mode: '0644'
+  register: netbird_client_input_policy
+
+- name: Install persistent NetBird client output firewall snippet
+  ansible.builtin.template:
+    src: netbird-client-output.nft.j2
+    dest: /etc/nftables.d/netbird-client-output.nft
+    owner: root
+    group: root
+    mode: '0644'
+  register: netbird_client_output_policy
+
+- name: Install persistent NetBird container forwarding policy
+  ansible.builtin.template:
+    src: netbird-client-forward.nft.j2
+    dest: /etc/nftables.d/netbird-client-forward.nft
+    owner: root
+    group: root
+    mode: '0644'
+  register: netbird_client_forward_policy
+
+- name: Read the persistent firewall for NetBird client anchors
+  ansible.builtin.slurp:
+    src: /etc/nftables.conf
+  register: netbird_client_nftables_config
+
+- name: Require the managed firewall drop anchors
+  ansible.builtin.assert:
+    that:
+      - "'log prefix \"nft-drop-in: \" drop' in (netbird_client_nftables_config.content | b64decode)"
+      - "'log prefix \"nft-drop-out: \" drop' in (netbird_client_nftables_config.content | b64decode)"
+    fail_msg: "Expected networking-hardening input/output chains; refusing to edit an unknown firewall."
+
+- name: Include persistent input service rules before the final drop
+  ansible.builtin.lineinfile:
+    path: /etc/nftables.conf
+    line: '    include "/etc/nftables.d/*-input.nft"'
+    insertbefore: '^\s*log prefix "nft-drop-in: " drop'
+    validate: /usr/bin/nft --check --file %s
+
+- name: Include persistent output service rules before the final drop
+  ansible.builtin.lineinfile:
+    path: /etc/nftables.conf
+    line: '    include "/etc/nftables.d/*-output.nft"'
+    insertbefore: '^\s*log prefix "nft-drop-out: " drop'
+    validate: /usr/bin/nft --check --file %s
+
+- name: Validate persistent firewall with NetBird client rules
+  ansible.builtin.command:
+    argv: [/usr/bin/nft, --check, --file, /etc/nftables.conf]
+  changed_when: false
+  check_mode: false
+
+- name: Require non-destructive base policy before applying changed service rules
+  ansible.builtin.assert:
+    that:
+      - "'destroy table inet filter' in (netbird_client_nftables_config.content | b64decode)"
+      - "'flush ruleset' not in (netbird_client_nftables_config.content | b64decode)"
+      - "'*-forward.nft' in (netbird_client_nftables_config.content | b64decode)"
+    fail_msg: "Apply networking-hardening --tags firewall first; the base policy must preserve Podman/NetBird tables and include forwarding snippets."
+
+- name: Apply changed port and interface policy without flushing dynamic tables
+  ansible.builtin.command:
+    argv: [/usr/bin/nft, --file, /etc/nftables.conf]
+  when: netbird_client_input_policy.changed or netbird_client_output_policy.changed or netbird_client_forward_policy.changed
+  changed_when: true
+
+- name: Inspect live managed firewall chains
+  ansible.builtin.command:
+    argv: [/usr/bin/nft, -a, list, chain, inet, filter, "{{ item }}"]
+  loop: [input, output]
+  register: netbird_client_live_chains
+  changed_when: false
+  check_mode: false
+
+- name: Locate live NetBird rules, broad UDP egress, and drop anchors
+  ansible.builtin.set_fact:
+    netbird_client_live_input: "{{ netbird_client_live_chains.results[0].stdout }}"
+    netbird_client_live_output: "{{ netbird_client_live_chains.results[1].stdout }}"
+    netbird_client_input_drop: "{{ netbird_client_live_chains.results[0].stdout | regex_findall('log prefix \"nft-drop-in: \" drop # handle ([0-9]+)') }}"
+    netbird_client_output_drop: "{{ netbird_client_live_chains.results[1].stdout | regex_findall('log prefix \"nft-drop-out: \" drop # handle ([0-9]+)') }}"
+    netbird_client_broad_udp_handles: "{{ netbird_client_live_chains.results[1].stdout | regex_findall('(?m)^\\s*oifname \"' ~ (netbird_client_wan_interface | regex_escape) ~ '\" meta l4proto udp(?: counter packets [0-9]+ bytes [0-9]+)? accept # handle ([0-9]+)\\s*$') }}"
+    netbird_client_limited_userspace_udp_handles: "{{ netbird_client_live_chains.results[1].stdout | regex_findall('(?m)^\\s*oifname \"' ~ (netbird_client_wan_interface | regex_escape) ~ '\" meta skuid [^ ]+ udp sport [0-9]+(?: counter packets [0-9]+ bytes [0-9]+)? accept comment \"ansible-netbird-client-userspace\" # handle ([0-9]+)\\s*$') }}"
+
+- name: Require exactly one final drop in each live chain
+  ansible.builtin.assert:
+    that:
+      - netbird_client_input_drop | length == 1
+      - netbird_client_output_drop | length == 1
+    fail_msg: "Cannot identify live firewall drop anchors; refusing an unsafe change."
+
+- name: Remove broad live UDP egress allowances
+  ansible.builtin.command:
+    argv: [/usr/bin/nft, delete, rule, inet, filter, output, handle, "{{ item }}"]
+  loop: "{{ netbird_client_broad_udp_handles }}"
+  changed_when: true
+
+- name: Remove obsolete source-port restriction from userspace NetBird UDP
+  ansible.builtin.command:
+    argv: [/usr/bin/nft, delete, rule, inet, filter, output, handle, "{{ item }}"]
+  loop: "{{ netbird_client_limited_userspace_udp_handles }}"
+  changed_when: true
+
+- name: Allow the NetBird overlay in the live input chain
+  ansible.builtin.command:
+    argv: [/usr/bin/nft, insert, rule, inet, filter, input, position, "{{ netbird_client_input_drop[0] }}", iifname, "{{ netbird_client_interface }}", counter, accept, comment, '"ansible-netbird-client-overlay"']
+  when: '"ansible-netbird-client-overlay" not in netbird_client_live_input'
+  changed_when: true
+
+- name: Allow the fixed NetBird UDP port in the live input chain
+  ansible.builtin.command:
+    argv: [/usr/bin/nft, insert, rule, inet, filter, input, position, "{{ netbird_client_input_drop[0] }}", udp, dport, "{{ netbird_client_wireguard_port | string }}", counter, accept, comment, '"ansible-netbird-client"']
+  when: '"ansible-netbird-client\"" not in netbird_client_live_input'
+  changed_when: true
+
+- name: Allow dedicated NetBird client HTTPS in the live output chain
+  ansible.builtin.command:
+    argv: [/usr/bin/nft, insert, rule, inet, filter, output, position, "{{ netbird_client_output_drop[0] }}", oifname, "{{ netbird_client_wan_interface }}", meta, skuid, "{{ netbird_client_user }}", tcp, dport, '443', counter, accept, comment, '"ansible-netbird-client-https"']
+  when: '"ansible-netbird-client-https" not in netbird_client_live_output'
+  changed_when: true
+
+- name: Allow only fixed-port kernel NetBird UDP egress in the live output chain
+  ansible.builtin.command:
+    argv: [/usr/bin/nft, insert, rule, inet, filter, output, position, "{{ netbird_client_output_drop[0] }}", oifname, "{{ netbird_client_wan_interface }}", meta, skuid, '0', udp, sport, "{{ netbird_client_wireguard_port | string }}", counter, accept, comment, '"ansible-netbird-client"']
+  when: '"ansible-netbird-client\"" not in netbird_client_live_output'
+  changed_when: true
+
+- name: Allow userspace UDP only for the dedicated NetBird client UID
+  ansible.builtin.command:
+    argv: [/usr/bin/nft, insert, rule, inet, filter, output, position, "{{ netbird_client_output_drop[0] }}", oifname, "{{ netbird_client_wan_interface }}", meta, skuid, "{{ netbird_client_user }}", meta, l4proto, udp, counter, accept, comment, '"ansible-netbird-client-userspace"']
+  when: netbird_client_limited_userspace_udp_handles | length > 0 or 'ansible-netbird-client-userspace' not in netbird_client_live_output
+  changed_when: true

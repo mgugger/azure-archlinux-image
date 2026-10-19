@@ -1,0 +1,108 @@
+---
+- name: Check for existing Immich environment
+  ansible.builtin.stat:
+    path: "{{ immich_compose_dir }}/.env"
+  register: immich_env_stat
+
+- name: Require restored or supplied Immich database password
+  ansible.builtin.assert:
+    that:
+      - immich_env_stat.stat.exists or immich_db_password | length > 0
+    fail_msg: "Restore the Immich .env file or supply immich_db_password in Ansible Vault or secrets/apps.local.yml."
+
+- name: Require a single-line Immich database password
+  ansible.builtin.assert:
+    that:
+      - "'\n' not in immich_db_password"
+      - "'\r' not in immich_db_password"
+    fail_msg: "immich_db_password must not contain line breaks."
+
+- name: Install Podman Compose
+  community.general.pacman:
+    name:
+      - podman
+      - podman-compose
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "{{ immich_host_proxy_url }}"
+    https_proxy: "{{ immich_host_proxy_url }}"
+
+- name: Ensure Immich compose directory exists
+  ansible.builtin.file:
+    path: "{{ immich_compose_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0750'
+
+- name: Manage Immich environment when credentials are supplied
+  ansible.builtin.template:
+    src: immich.env.j2
+    dest: "{{ immich_compose_dir }}/.env"
+    owner: root
+    group: root
+    mode: '0600'
+  when: immich_db_password | length > 0
+  no_log: true
+  diff: false
+  notify: Restart Immich
+
+- name: Protect restored Immich environment
+  ansible.builtin.file:
+    path: "{{ immich_compose_dir }}/.env"
+    owner: root
+    group: root
+    mode: '0600'
+  when: immich_env_stat.stat.exists
+
+- name: Manage Immich compose configuration
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ immich_compose_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: '0640'
+  notify: Restart Immich
+
+- name: Ensure Immich bridge matches the host proxy and firewall
+  containers.podman.podman_network:
+    name: "{{ immich_network_name }}"
+    interface_name: "{{ immich_network_interface }}"
+    subnet: "{{ immich_network_subnet }}"
+    gateway: "{{ immich_network_gateway }}"
+    state: present
+
+- name: Install Immich compose service
+  ansible.builtin.template:
+    src: immich-compose.service.j2
+    dest: /etc/systemd/system/immich-compose.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd for Immich
+    - Restart Immich
+
+- name: Apply Immich service changes before starting
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start Immich
+  ansible.builtin.systemd:
+    name: immich-compose.service
+    enabled: true
+    state: started
+
+- name: Check for restic backup registration
+  ansible.builtin.stat:
+    path: "{{ immich_restic_files_path }}"
+  register: immich_restic_stat
+
+- name: Register Immich configuration and local database for backup
+  ansible.builtin.lineinfile:
+    path: "{{ immich_restic_files_path }}"
+    line: "{{ item }}"
+  loop:
+    - "{{ immich_compose_dir }}"
+    - "{{ immich_db_data_location if immich_db_data_location.startswith('/') else immich_compose_dir ~ '/' ~ immich_db_data_location }}"
+  when: immich_restic_stat.stat.exists

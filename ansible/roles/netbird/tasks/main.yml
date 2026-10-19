@@ -1,0 +1,380 @@
+---
+- name: Validate NetBird public hostname and local endpoints
+  ansible.builtin.assert:
+    that:
+      - netbird_domain is match('^(?=.{1,253}$)([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?[.])+[a-zA-Z]{2,63}$')
+      - netbird_domain == netbird_domain | trim
+      - netbird_listen_address is match('^127[.]0[.]0[.]1:[0-9]+$')
+      - netbird_healthcheck_address is match('^127[.]0[.]0[.]1:[0-9]+$')
+      - netbird_listen_address.split(':')[-1] | int > 1024
+      - netbird_listen_address.split(':')[-1] | int < 65536
+      - netbird_healthcheck_address.split(':')[-1] | int > 1024
+      - netbird_healthcheck_address.split(':')[-1] | int < 65536
+      - netbird_metrics_port | int > 1024
+      - netbird_metrics_port | int < 65536
+      - netbird_dashboard_dir is match('^/var/lib/netbird-dashboard(/[a-zA-Z0-9_-]+)*$')
+      - netbird_stun_port | int > 1024
+      - netbird_stun_port | int < 65536
+    fail_msg: "Use a public DNS hostname, loopback-only backend endpoints, an unprivileged STUN port, and a dashboard directory under /var/lib/netbird-dashboard."
+
+- name: Load server-local NetBird secrets
+  ansible.builtin.include_tasks: secrets.yml
+
+- name: Require persistent NetBird secrets or explicit staging
+  ansible.builtin.assert:
+    that:
+      - >-
+        netbird_secrets_ready or
+        (netbird_allow_unconfigured | bool and
+        netbird_relay_auth_secret | length == 0 and
+        netbird_store_encryption_key | length == 0 and
+        netbird_session_cookie_encryption_key | length == 0)
+    fail_msg: "Set a relay secret of at least 32 characters and two encryption keys, each raw 32-byte ASCII or base64-encoded 32 bytes, in the server-local secrets.yml or Ansible Vault. Use netbird_allow_unconfigured=true only to stage a stopped backend with all secrets empty."
+
+- name: Check NetBird prerequisites
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /usr/bin/yay
+    - /usr/bin/caddy
+    - "{{ netbird_caddyfile }}"
+    - /etc/tinyproxy/filter
+    - /etc/nftables.conf
+    - /usr/bin/nft
+  register: netbird_prerequisites
+
+- name: Require yay-bin, caddy and networking-hardening to be applied first
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+    fail_msg: "Missing {{ item.item }}. Apply yay-bin, caddy and networking-hardening before netbird."
+  loop: "{{ netbird_prerequisites.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+- name: Require the AUR builder account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ netbird_aur_builder_user }}"
+
+- name: Configure persistent and live NetBird STUN firewall access
+  ansible.builtin.include_tasks: firewall.yml
+
+- name: Remove loopback override for the public NetBird STUN hostname
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^\s*(127(?:\.[0-9]+){3}|::1)\s+{{ netbird_domain | regex_escape }}\s*(?:#.*)?$'
+    state: absent
+    backup: true
+
+- name: Allow NetBird build dependencies and issuer through tinyproxy
+  ansible.builtin.blockinfile:
+    path: /etc/tinyproxy/filter
+    marker: "# {mark} ANSIBLE NETBIRD DOMAINS"
+    block: "{{ netbird_proxy_domains | join('\n') }}"
+  notify: Restart tinyproxy for NetBird
+
+- name: Apply NetBird proxy allowlist before building
+  ansible.builtin.meta: flush_handlers
+
+- name: Query installed NetBird packages
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/pacman
+      - -Q
+      - "{{ item }}"
+  loop: "{{ netbird_packages }}"
+  register: netbird_package_query
+  check_mode: false
+  changed_when: false
+  failed_when: netbird_package_query.rc not in [0, 1]
+
+- name: Build missing AUR packages without concurrent orphan cleanup
+  when: netbird_package_query.results | selectattr('rc', 'equalto', 1) | list | length > 0
+  block:
+    - name: Remember automatic-update timer state
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemctl
+          - show
+          - pacman-auto-update.timer
+          - --property=ActiveState
+          - --value
+      register: netbird_update_timer
+      changed_when: false
+      check_mode: false
+
+    - name: Pause automatic updates during AUR builds
+      ansible.builtin.systemd:
+        name: pacman-auto-update.timer
+        state: stopped
+      when: netbird_update_timer.stdout == 'active'
+
+    - name: Wait for an already-running automatic update to finish
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/systemctl
+          - show
+          - pacman-auto-update.service
+          - --property=ActiveState
+          - --value
+      register: netbird_update_service
+      changed_when: false
+      until: netbird_update_service.stdout not in ['active', 'activating', 'deactivating']
+      retries: 120
+      delay: 5
+      when: not ansible_check_mode
+
+    - name: Install NetBird server and dashboard from AUR using yay
+      ansible.builtin.command:
+        argv: "{{ ['/usr/bin/yay', '-S', '--noconfirm', '--needed'] + netbird_packages }}"
+      become: true
+      become_user: "{{ netbird_aur_builder_user }}"
+      environment:
+        http_proxy: "{{ netbird_proxy_url }}"
+        https_proxy: "{{ netbird_proxy_url }}"
+        HTTP_PROXY: "{{ netbird_proxy_url }}"
+        HTTPS_PROXY: "{{ netbird_proxy_url }}"
+        NEXT_TELEMETRY_DISABLED: "1"
+        GOMAXPROCS: "2"
+        GOMEMLIMIT: 1GiB
+        NODE_OPTIONS: --max-old-space-size=1536
+      register: netbird_package_install
+      changed_when: true
+      notify: Restart NetBird server
+  always:
+    - name: Restore the automatic-update timer after AUR builds
+      ansible.builtin.systemd:
+        name: pacman-auto-update.timer
+        state: started
+      when: (netbird_update_timer.stdout | default('')) == 'active'
+
+- name: Ensure NetBird service group exists
+  ansible.builtin.group:
+    name: "{{ netbird_group }}"
+    system: true
+
+- name: Ensure NetBird service user exists
+  ansible.builtin.user:
+    name: "{{ netbird_user }}"
+    group: "{{ netbird_group }}"
+    home: "{{ netbird_data_dir }}"
+    create_home: false
+    shell: /usr/bin/nologin
+    system: true
+
+- name: Ensure private NetBird configuration directory exists
+  ansible.builtin.file:
+    path: "{{ netbird_config_dir }}"
+    state: directory
+    owner: root
+    group: "{{ netbird_group }}"
+    mode: '0750'
+
+- name: Seed server-local NetBird secrets without overwriting them
+  ansible.builtin.template:
+    src: secrets.yml.j2
+    dest: "{{ netbird_secrets_file }}"
+    force: false
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  diff: false
+
+- name: Protect server-local NetBird secrets
+  ansible.builtin.file:
+    path: "{{ netbird_secrets_file }}"
+    owner: root
+    group: root
+    mode: '0600'
+  when: not ansible_check_mode or netbird_server_secrets_stat.stat.exists
+
+- name: Ensure private NetBird data directory exists
+  ansible.builtin.file:
+    path: "{{ netbird_data_dir }}"
+    state: directory
+    owner: "{{ netbird_user }}"
+    group: "{{ netbird_group }}"
+    mode: '0700'
+
+- name: Ensure restored NetBird data is owned by its service account
+  ansible.builtin.file:
+    path: "{{ netbird_data_dir }}"
+    state: directory
+    owner: "{{ netbird_user }}"
+    group: "{{ netbird_group }}"
+    recurse: true
+
+- name: Configure combined NetBird server
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ netbird_config_dir }}/config.yaml"
+    owner: root
+    group: "{{ netbird_group }}"
+    mode: '0640'
+  no_log: true
+  diff: false
+  notify: Restart NetBird server
+
+- name: Ensure NetBird service drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/system/netbird-server.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure NetBird service identity and proxy
+  ansible.builtin.template:
+    src: netbird-server.conf.j2
+    dest: /etc/systemd/system/netbird-server.service.d/10-ansible.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd for NetBird
+    - Restart NetBird server
+
+- name: Configure NetBird dashboard for embedded authentication
+  ansible.builtin.template:
+    src: dashboard.env.j2
+    dest: "{{ netbird_dashboard_env_file }}"
+    owner: root
+    group: root
+    mode: '0644'
+  register: netbird_dashboard_env
+
+- name: Check whether dashboard has been generated
+  ansible.builtin.stat:
+    path: "{{ netbird_dashboard_dir }}/index.html"
+  register: netbird_dashboard_index
+
+- name: Generate dashboard assets using the package helper
+  ansible.builtin.command:
+    argv:
+      - /usr/bin/netbird-dashboard-generate
+      - "{{ netbird_dashboard_env_file }}"
+  when: >-
+    netbird_dashboard_env.changed or
+    (netbird_package_install.changed | default(false)) or
+    not netbird_dashboard_index.stat.exists
+  changed_when: true
+
+- name: Add validated NetBird site without replacing existing Caddy sites
+  ansible.builtin.blockinfile:
+    path: "{{ netbird_caddyfile }}"
+    marker: "# {mark} ANSIBLE NETBIRD SITE"
+    backup: true
+    block: "{{ lookup('ansible.builtin.template', 'netbird.Caddyfile.j2') }}"
+    validate: /usr/bin/caddy validate --adapter caddyfile --config %s
+  notify: Reload Caddy for NetBird
+
+- name: Read Caddy global options before configuring stream timeouts
+  ansible.builtin.slurp:
+    src: "{{ netbird_caddyfile }}"
+  register: netbird_caddy_existing
+
+- name: Add a global servers block when Caddy has no global options
+  ansible.builtin.blockinfile:
+    path: "{{ netbird_caddyfile }}"
+    insertbefore: BOF
+    marker: '# {mark} ANSIBLE NETBIRD GLOBAL OPTIONS'
+    block: |
+      {
+          servers {
+          }
+      }
+    validate: /usr/bin/caddy validate --adapter caddyfile --config %s
+  when: not (netbird_caddy_existing.content | b64decode is search('(?m)^\\s*servers\\s*\\{')) and not (netbird_caddy_existing.content | b64decode is search('\\A\\s*\\{'))
+  notify: Reload Caddy for NetBird
+
+- name: Add a servers block to existing Caddy global options when absent
+  ansible.builtin.replace:
+    path: "{{ netbird_caddyfile }}"
+    regexp: '\A(\s*\{[^\S\n]*\n)'
+    replace: '\1    servers {\n    }\n'
+    validate: /usr/bin/caddy validate --adapter caddyfile --config %s
+  when: not (netbird_caddy_existing.content | b64decode is search('(?m)^\\s*servers\\s*\\{')) and (netbird_caddy_existing.content | b64decode is search('\\A\\s*\\{'))
+  notify: Reload Caddy for NetBird
+
+- name: Extend Caddy idle timeouts for long-lived NetBird gRPC streams
+  ansible.builtin.blockinfile:
+    path: "{{ netbird_caddyfile }}"
+    insertafter: '^\s*servers \{$'
+    marker: '        # {mark} ANSIBLE NETBIRD GRPC TIMEOUT'
+    block: |2
+            timeouts {
+                # Bidirectional gRPC streams may be quiet in either direction.
+                read_body_idle {{ netbird_caddy_write_idle_timeout }}
+                write_idle {{ netbird_caddy_write_idle_timeout }}
+            }
+    validate: /usr/bin/caddy validate --adapter caddyfile --config %s
+  notify: Reload Caddy for NetBird
+
+- name: Add IPv6 only to Caddy matchers that already trust NetBird IPv4
+  ansible.builtin.replace:
+    path: "{{ netbird_caddyfile }}"
+    regexp: '^(\s*not remote_ip (?=[^\n]*100\.64\.0\.0/10)(?![^\n]*fc00::/7)[^\n]+)$'
+    replace: '\1 fc00::/7'
+    validate: /usr/bin/caddy validate --adapter caddyfile --config %s
+  notify: Reload Caddy for NetBird
+
+- name: Apply NetBird service and Caddy configuration
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start NetBird server
+  ansible.builtin.systemd:
+    name: netbird-server.service
+    enabled: "{{ netbird_secrets_ready }}"
+    state: "{{ netbird_secrets_ready | ternary('started', 'stopped') }}"
+  when: >-
+    not ansible_check_mode or
+    'netbird-server' in (netbird_package_query.results |
+    selectattr('rc', 'equalto', 0) | map(attribute='item') | list)
+
+- name: Enable and start Caddy
+  ansible.builtin.systemd:
+    name: caddy.service
+    enabled: true
+    state: started
+
+- name: Wait for NetBird embedded identity provider
+  ansible.builtin.uri:
+    url: "http://{{ netbird_listen_address }}/oauth2/.well-known/openid-configuration"
+    use_proxy: false
+    return_content: true
+    status_code: 200
+  register: netbird_oidc_discovery
+  until: netbird_oidc_discovery.status == 200
+  retries: 12
+  delay: 5
+  when: not ansible_check_mode and netbird_secrets_ready
+
+- name: Verify NetBird issuer matches the public Caddy hostname
+  ansible.builtin.assert:
+    that:
+      - netbird_oidc_discovery.json.issuer == 'https://' ~ netbird_domain ~ '/oauth2'
+    fail_msg: "NetBird OIDC discovery did not return the configured public issuer."
+  when: not ansible_check_mode and netbird_secrets_ready
+
+- name: Report staged NetBird backend awaiting secrets
+  ansible.builtin.debug:
+    msg: "NetBird dashboard and firewall are installed, but the backend is stopped and disabled. Set all three values in {{ netbird_secrets_file }} and rerun the NetBird role to validate and start it."
+  when: not netbird_secrets_ready
+
+- name: Check for restic backup registration
+  ansible.builtin.stat:
+    path: "{{ netbird_restic_files_path }}"
+  register: netbird_restic_stat
+
+- name: Register NetBird databases and configuration for backup
+  ansible.builtin.lineinfile:
+    path: "{{ netbird_restic_files_path }}"
+    line: "{{ item }}"
+  loop:
+    - "{{ netbird_config_dir }}"
+    - "{{ netbird_data_dir }}"
+    - "{{ netbird_dashboard_env_file }}"
+    - "{{ netbird_caddyfile }}"
+  when: netbird_restic_stat.stat.exists

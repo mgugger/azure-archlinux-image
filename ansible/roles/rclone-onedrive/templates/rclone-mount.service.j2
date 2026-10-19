@@ -1,0 +1,28 @@
+[Unit]
+Description=Rclone {{ item.remote }} mount
+Wants=network-online.target
+After=network-online.target tinyproxy.service
+RequiresMountsFor={{ rclone_onedrive_cache_dir }}
+
+[Service]
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=120
+ExecStart=/usr/bin/rclone mount {{ item.remote }} {{ item.path }} \
+  --config={{ rclone_onedrive_config_path }} \
+  --allow-other \
+{% for option in item.options %}
+  {{ option }} \
+{% endfor %}
+  --cache-dir={{ rclone_onedrive_cache_dir }}
+ExecStop=/usr/bin/fusermount3 -u {{ item.path }}
+Restart=on-failure
+RestartSec=5
+Environment="HTTP_PROXY={{ rclone_onedrive_proxy_url }}"
+Environment="HTTPS_PROXY={{ rclone_onedrive_proxy_url }}"
+ProtectHome=false
+PrivateTmp=false
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,115 @@
+---
+- name: Check for existing Papra environment
+  ansible.builtin.stat:
+    path: "{{ papra_environment_file }}"
+  register: papra_env_stat
+
+- name: Require restored or supplied Papra secrets
+  ansible.builtin.assert:
+    that:
+      - papra_env_stat.stat.exists or (papra_auth_secret | length > 0 and papra_document_encryption_keys | length > 0)
+      - (papra_auth_secret | length > 0) == (papra_document_encryption_keys | length > 0)
+    fail_msg: "Restore papra.env or supply both papra_auth_secret and papra_document_encryption_keys. Retain the original encryption keys for existing documents."
+
+- name: Require single-line Papra secrets
+  ansible.builtin.assert:
+    that:
+      - "'\n' not in papra_auth_secret"
+      - "'\r' not in papra_auth_secret"
+      - "'\n' not in papra_document_encryption_keys"
+      - "'\r' not in papra_document_encryption_keys"
+    fail_msg: "Papra secrets must not contain line breaks."
+
+- name: Install Podman
+  community.general.pacman:
+    name: podman
+    state: present
+    update_cache: false
+  environment:
+    http_proxy: "{{ papra_proxy_url }}"
+    https_proxy: "{{ papra_proxy_url }}"
+
+- name: Install Papra OCR language data
+  community.general.pacman:
+    name: "tesseract-data-{{ item }}"
+    state: present
+    update_cache: false
+  loop: "{{ papra_ocr_languages }}"
+  environment:
+    http_proxy: "{{ papra_proxy_url }}"
+    https_proxy: "{{ papra_proxy_url }}"
+
+- name: Ensure Papra configuration directory exists
+  ansible.builtin.file:
+    path: "{{ papra_environment_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Manage Papra environment when secrets are supplied
+  ansible.builtin.template:
+    src: papra.env.j2
+    dest: "{{ papra_environment_file }}"
+    owner: root
+    group: root
+    mode: '0600'
+  when: papra_auth_secret | length > 0
+  no_log: true
+  diff: false
+  notify: Restart Papra
+
+- name: Protect restored Papra environment
+  ansible.builtin.file:
+    path: "{{ papra_environment_file }}"
+    owner: root
+    group: root
+    mode: '0600'
+  when: papra_env_stat.stat.exists
+
+- name: Ensure Papra local database directory exists without changing restored ownership
+  ansible.builtin.file:
+    path: "{{ papra_database_dir }}"
+    state: directory
+
+- name: Ensure system Quadlet directory exists
+  ansible.builtin.file:
+    path: /etc/containers/systemd
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install Papra Quadlet
+  ansible.builtin.template:
+    src: papra.container.j2
+    dest: /etc/containers/systemd/papra.container
+    owner: root
+    group: root
+    mode: '0644'
+  notify:
+    - Reload systemd for Papra
+    - Restart Papra
+
+- name: Apply Papra Quadlet changes before starting
+  ansible.builtin.meta: flush_handlers
+
+- name: Start Papra generated service
+  ansible.builtin.systemd:
+    name: papra.service
+    state: started
+
+- name: Check for restic backup registration
+  ansible.builtin.stat:
+    path: "{{ papra_restic_files_path }}"
+  register: papra_restic_stat
+
+- name: Register Papra database and configuration for backup
+  ansible.builtin.lineinfile:
+    path: "{{ papra_restic_files_path }}"
+    line: "{{ item }}"
+  loop:
+    - "{{ papra_database_dir }}"
+    - "{{ papra_environment_file }}"
+    - /etc/containers/systemd/papra.container
+  when: papra_restic_stat.stat.exists

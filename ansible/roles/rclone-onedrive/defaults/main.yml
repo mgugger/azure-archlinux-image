@@ -1,0 +1,41 @@
+---
+rclone_onedrive_config_path: /var/lib/rclone/.config/rclone/rclone.conf
+# Only used to seed a missing config. OAuth token refreshes must survive reruns.
+rclone_onedrive_config_content: ""
+rclone_onedrive_proxy_url: http://127.0.0.1:8888
+rclone_onedrive_cache_dir: /mnt/arch-var/rclone-cache-onedrive
+rclone_onedrive_restic_files_path: /etc/restic/root.files
+rclone_onedrive_mounts:
+  - name: onedrive
+    remote: "onedrive_media:"
+    path: /mnt/onedrive
+    options:
+      - --dir-cache-time=30m
+      - --poll-interval=15s
+      - --transfers=3
+      - --tpslimit=6
+      - --checkers=4
+      - --vfs-write-back=5s
+      - --vfs-cache-mode=full
+      - --vfs-cache-max-size=2G
+      - --vfs-cache-max-age=6h
+      - --vfs-read-chunk-size=8M
+      - --vfs-read-chunk-size-limit=32M
+      - --vfs-read-ahead=0
+      - --buffer-size=8M
+  - name: media
+    remote: "onedrive_media_crypt:"
+    path: /mnt/media
+    options:
+      - --transfers=2
+      - --checkers=4
+      - --tpslimit=6
+      - --vfs-read-ahead=0
+      - --dir-cache-time=24h
+      - --poll-interval=24h
+      - --vfs-cache-mode=full
+      - --vfs-cache-max-size=1.4G
+      - --vfs-cache-max-age=1h
+      - --vfs-read-chunk-size=8M
+      - --vfs-read-chunk-size-limit=32M
+      - --buffer-size=8M

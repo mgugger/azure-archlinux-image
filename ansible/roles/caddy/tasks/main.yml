@@ -122,6 +122,14 @@
   notify: Restart caddy
   when: not caddyfile_stat.stat.exists and not caddyfile_backup_stat.stat.exists
 
+- name: Keep Caddy internal-access matchers IPv4 and IPv6 capable
+  ansible.builtin.replace:
+    path: /etc/caddy/Caddyfile
+    regexp: '^(\s*not remote_ip (?=[^\n]*100\.64\.0\.0/10)(?![^\n]*fc00::/7)[^\n]+)$'
+    replace: '\1 fc00::/7'
+    validate: /usr/bin/caddy validate --adapter caddyfile --config %s
+  notify: Restart caddy
+
 - name: Enable and start caddy
   ansible.builtin.systemd:
     name: "{{ caddy_service_name }}"

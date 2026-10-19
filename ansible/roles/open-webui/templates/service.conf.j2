@@ -1,0 +1,17 @@
+[Unit]
+Requires=
+After=
+After=network-online.target tinyproxy.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/open-webui/secret.env
+WorkingDirectory={{ open_webui_data_dir }}
+ExecStart=
+ExecStart=/usr/bin/uvx --python 3.11 open-webui@{{ open_webui_version }} serve --host 127.0.0.1 --port {{ open_webui_port }}
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ open_webui_data_dir }} /var/cache/open-webui
