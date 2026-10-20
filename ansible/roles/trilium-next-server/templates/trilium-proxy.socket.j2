@@ -1,0 +1,9 @@
+[Unit]
+Description=Trilium on-demand HTTP listener
+
+[Socket]
+ListenStream=127.0.0.1:{{ trilium_next_server_activation_port }}
+NoDelay=true
+
+[Install]
+WantedBy=sockets.target

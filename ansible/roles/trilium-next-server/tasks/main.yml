@@ -1,4 +1,14 @@
 ---
+- name: Validate Trilium activation ports and idle timeout
+  ansible.builtin.assert:
+    that:
+      - trilium_next_server_activation_port | int > 1024
+      - trilium_next_server_activation_port | int < 65536
+      - trilium_next_server_backend_port | int > 1024
+      - trilium_next_server_backend_port | int < 65536
+      - trilium_next_server_activation_port | int != trilium_next_server_backend_port | int
+      - trilium_next_server_idle_timeout is match('^[1-9][0-9]*(s|min|h)$')
+
 - name: Ensure yay is installed before AUR package installation
   ansible.builtin.stat:
     path: /usr/bin/yay
@@ -25,6 +35,14 @@
     system: true
     state: present
 
+- name: Check whether Trilium is already installed
+  ansible.builtin.command:
+    argv: [/usr/bin/pacman, -Q, "{{ trilium_next_server_package_name }}"]
+  register: trilium_package_query
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
 - name: Install trilium-next-server from AUR using yay
   ansible.builtin.command:
     cmd: yay -S --noconfirm --needed {{ trilium_next_server_package_name }}
@@ -35,6 +53,7 @@
     https_proxy: "http://127.0.0.1:8888"
     HTTP_PROXY: "http://127.0.0.1:8888"
     HTTPS_PROXY: "http://127.0.0.1:8888"
+  when: trilium_package_query.rc != 0
 
 - name: Ensure trilium service drop-in directory exists
   ansible.builtin.file:
@@ -48,9 +67,7 @@
   ansible.builtin.file:
     path: "{{ trilium_next_server_legacy_systemd_override_file }}"
     state: absent
-  notify:
-    - Reload systemd daemon
-    - Restart trilium next server
+  notify: Reconfigure Trilium activation
 
 - name: Manage trilium service override file
   ansible.builtin.copy:
@@ -59,7 +76,12 @@
     group: root
     mode: '0644'
     content: |
+      [Unit]
+      StopWhenUnneeded=yes
+
       [Service]
+      Environment=TRILIUM_HOST=127.0.0.1
+      Environment=TRILIUM_PORT={{ trilium_next_server_backend_port }}
       User={{ trilium_next_server_user }}
       Group={{ trilium_next_server_group }}
       Restart=always
@@ -68,9 +90,39 @@
       ProtectSystem=strict
       #ProtectHome=yes
       #ReadWritePaths=/srv/trilium
-  notify:
-    - Reload systemd daemon
-    - Restart trilium next server
+  notify: Reconfigure Trilium activation
+
+- name: Install Trilium activation prerequisites
+  ansible.builtin.package:
+    name: curl
+    state: present
+
+- name: Configure Trilium activation socket
+  ansible.builtin.template:
+    src: trilium-proxy.socket.j2
+    dest: "/etc/systemd/system/{{ trilium_next_server_proxy_name }}.socket"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reconfigure Trilium activation
+
+- name: Configure Trilium activation proxy
+  ansible.builtin.template:
+    src: trilium-proxy.service.j2
+    dest: "/etc/systemd/system/{{ trilium_next_server_proxy_name }}.service"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reconfigure Trilium activation
+
+- name: Disable Caddy upstream connection pooling for Trilium only
+  ansible.builtin.replace:
+    path: "{{ trilium_next_server_caddyfile }}"
+    regexp: '(?m)^([ \t]*)reverse_proxy \* 127\.0\.0\.1:{{ trilium_next_server_activation_port }}(?:[ \t]*\{\n[ \t]*transport http \{\n[ \t]*keepalive off\n[ \t]*\}\n[ \t]*\})?[ \t]*$'
+    replace: '\g<1>reverse_proxy * 127.0.0.1:{{ trilium_next_server_activation_port }} {\n\g<1>    transport http {\n\g<1>        keepalive off\n\g<1>    }\n\g<1>}'
+    validate: /usr/bin/caddy validate --adapter caddyfile --config %s
+    backup: true
+  notify: Reload Caddy for Trilium
 
 - name: Ensure trilium managed directories exist
   ansible.builtin.file:
@@ -104,8 +156,17 @@
     recurse: true
   loop: "{{ trilium_next_server_managed_paths }}"
 
-- name: Enable and start trilium-next-server
+- name: Disable direct Trilium boot activation
   ansible.builtin.systemd:
     name: "{{ trilium_next_server_service_name }}"
+    enabled: false
+  notify: Reconfigure Trilium activation
+
+- name: Apply Trilium activation changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start the Trilium activation socket only
+  ansible.builtin.systemd:
+    name: "{{ trilium_next_server_proxy_name }}.socket"
     enabled: true
     state: started

@@ -31,7 +31,7 @@
     #- jellyfin
     #- pacman-auto-update
     #- yay-bin
-    - trilium-next-server
+    - { role: trilium-next-server, tags: [trilium-next-server] }
     #- { role: rclone-onedrive, tags: [apps, rclone-onedrive] }
     #- { role: immich, tags: [apps, immich] }
     #- { role: papra, tags: [apps, papra] }

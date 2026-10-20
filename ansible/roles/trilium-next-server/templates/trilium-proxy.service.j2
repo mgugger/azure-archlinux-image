@@ -1,0 +1,18 @@
+[Unit]
+Description=Trilium on-demand HTTP proxy
+Requires={{ trilium_next_server_systemd_unit }} {{ trilium_next_server_proxy_name }}.socket
+After={{ trilium_next_server_systemd_unit }} {{ trilium_next_server_proxy_name }}.socket
+
+[Service]
+Type=notify
+# Type=simple on the app does not imply HTTP readiness. Keep the first
+# connection queued in the activation socket until the backend is healthy.
+ExecStartPre=/usr/bin/curl --fail --silent --show-error --output /dev/null --retry 120 --retry-all-errors --retry-delay 1 --retry-max-time 120 --connect-timeout 1 --max-time 2 http://127.0.0.1:{{ trilium_next_server_backend_port }}/api/health-check
+ExecStart=/usr/lib/systemd/systemd-socket-proxyd --exit-idle-time={{ trilium_next_server_idle_timeout }} 127.0.0.1:{{ trilium_next_server_backend_port }}
+TimeoutStartSec=150
+DynamicUser=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6

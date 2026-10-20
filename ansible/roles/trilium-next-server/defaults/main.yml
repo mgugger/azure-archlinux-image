@@ -1,6 +1,12 @@
 ---
 trilium_next_server_package_name: trilium-next-server-bin
 trilium_next_server_service_name: trilium-next-server
+# Caddy keeps its existing upstream; only the backend moves to another port.
+trilium_next_server_activation_port: 8080
+trilium_next_server_backend_port: 8081
+trilium_next_server_idle_timeout: 10min
+trilium_next_server_proxy_name: "{{ trilium_next_server_service_name }}-proxy"
+trilium_next_server_caddyfile: /etc/caddy/Caddyfile
 trilium_next_server_user: trilium
 trilium_next_server_group: trilium
 trilium_next_server_home: /home/trilium

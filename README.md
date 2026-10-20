@@ -104,6 +104,40 @@ az deployment group create \
 
 If the data disk is removed or fails, the VM boots into the squashfs maintenance environment with password-based root login on console only (sshd is masked).
 
+## Trilium on-demand activation
+
+The `trilium-next-server` role enables a loopback systemd socket on port **8080**
+(the existing Caddy upstream). Requests start `trilium-next-server-proxy.service`,
+which starts Trilium on **127.0.0.1:8081**, waits for `/api/health-check`, and forwards
+connections using `systemd-socket-proxyd`. Only the socket is boot-enabled.
+After **10 minutes without open connections**, the proxy exits and
+`StopWhenUnneeded=yes` stops Trilium gracefully.
+
+The role validates and updates the existing plain Caddy directive
+`reverse_proxy * 127.0.0.1:8080` to disable upstream keep-alive for this route only.
+It preserves other routes and backs up Caddy's configuration before changing it.
+Restore the existing Caddy sites before applying this role; it does not create a
+new Trilium site. Persistent browser/WebSocket or sync connections can keep
+Trilium awake, and scheduled scripts do not run while it is stopped. This is
+connection-idle activation, not application-aware background-job management.
+
+Defaults expose `trilium_next_server_activation_port`,
+`trilium_next_server_backend_port`, and `trilium_next_server_idle_timeout`.
+The backend port must be free. Changing the public activation port also requires
+updating the existing Caddy route. Apply only this role with:
+
+```bash
+env LANG=C.UTF-8 LC_ALL=C.UTF-8 ansible-playbook \
+  -i '192.168.8.0,' -u manuel ansible/local.yml --tags trilium-next-server
+
+python -m unittest discover -s ansible/tests -p 'test_trilium_activation.py'
+```
+
+Inspect `trilium-next-server-proxy.socket`, `trilium-next-server-proxy.service`
+and `trilium-next-server.service` with `systemctl`. The socket should remain
+`active (listening)` when both services are inactive. A request through
+`https://manolito.wanip.ch/note/api/health-check` should wake Trilium.
+
 ## Recreating Immich, Papra, and OneDrive mounts
 
 The opt-in roles in [ansible/local.yml](ansible/local.yml) reproduce the

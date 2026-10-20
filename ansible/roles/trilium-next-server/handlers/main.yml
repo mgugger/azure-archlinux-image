@@ -1,9 +1,37 @@
 ---
-- name: Reload systemd daemon
+# Reload first so newly installed units are known. Release the public port before
+# stopping the old app listener; never restart the app directly into an idle state.
+- name: Reload systemd for Trilium activation
   ansible.builtin.systemd:
     daemon_reload: true
+  listen: Reconfigure Trilium activation
 
-- name: Restart trilium next server
+- name: Stop Trilium activation socket during reconfiguration
+  ansible.builtin.systemd:
+    name: "{{ trilium_next_server_proxy_name }}.socket"
+    state: stopped
+  listen: Reconfigure Trilium activation
+
+- name: Stop Trilium proxy during reconfiguration
+  ansible.builtin.systemd:
+    name: "{{ trilium_next_server_proxy_name }}.service"
+    state: stopped
+  listen: Reconfigure Trilium activation
+
+- name: Stop Trilium during reconfiguration
   ansible.builtin.systemd:
     name: "{{ trilium_next_server_service_name }}"
-    state: restarted
+    state: stopped
+  listen: Reconfigure Trilium activation
+
+- name: Start Trilium activation socket after reconfiguration
+  ansible.builtin.systemd:
+    name: "{{ trilium_next_server_proxy_name }}.socket"
+    enabled: true
+    state: started
+  listen: Reconfigure Trilium activation
+
+- name: Reload Caddy for Trilium
+  ansible.builtin.systemd:
+    name: caddy.service
+    state: reloaded
